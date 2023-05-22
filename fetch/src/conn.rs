@@ -1,61 +1,47 @@
-use crate::clkhs::model::*;
-
 use clickhouse::{Client, Row, error::Result, inserter::Inserter};
 use std::time::Duration;
 
-// TODO: switch to read with confy
-static TABLE_EVENTS:&str = "tx_event_test";
-static TABLE_TXMSGS:&str = "tx_message_test";
-static ADDRESS:&str = "http://127.0.0.1:8123";
-static USER:&str = "default";
-static PASSWD:&str = "******";
-static DBNAME:&str = "******";
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct Password(String);
 
-pub async fn clkhs_init_client() -> Result<Client> {
-  let client = Client::default()
-    .with_url(ADDRESS)
-    .with_user(USER)
-    .with_password(PASSWD)
-    .with_database(DBNAME);
-
-  Ok(client)
-}
-
-pub async fn clkhs_select_id() -> Result<u64> {
-  let client = clkhs_init_client().await?;
-  let id = client
-    .query(format!("SELECT MAX(id) FROM tx_log.{}", TABLE_EVENTS).as_str())
-    .fetch_one::<u64>()
-    .await?;
-
-  println!("id() = {id}");
-  Ok(id)
-}
-
-pub async fn clkhs_insert_receipts(rows: &Vec<TxReceiptLog>) -> Result<()> {
-  let client = clkhs_init_client().await?;
-
-  let mut inserter:Inserter<TxReceiptLog> = client.inserter(TABLE_EVENTS)?
-    .with_max_entries(100_000_000)
-    .with_period(Some(Duration::from_secs(10)))
-    .with_timeouts(Some(Duration::from_secs(3)), Some(Duration::from_secs(3)));
-
-  for i in 0..rows.len(){
-    inserter.write(&rows[i]).await?;
-    if i % 10_000 == 1{
-      println!("commit_logs:{i} total:{}", rows.len());
-      inserter.commit().await?;
-    }
+impl std::fmt::Debug for Password {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_tuple("Password").field(&self.0.len()).finish()
   }
-  inserter.end().await?;
-
-  Ok(())
 }
 
-pub async fn clkhs_insert_txmsgs(rows: &Vec<TxMessage>) -> Result<()> {
-  let client = clkhs_init_client().await?;
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Config {
+  pub url: String,
+  pub username: String,
+  pub password: Password,
+  pub db_name: String,
+}
 
-  let mut inserter:Inserter<TxMessage> = client.inserter(TABLE_TXMSGS)?
+pub async fn clkhs_init_client(config: &Config) -> Result<Client> {
+  let client = Client::default()
+    .with_url(&config.url)
+    .with_user(&config.username)
+    .with_password(&config.password.0);
+  client.query(format!("CREATE DATABASE IF NOT EXISTS {}", config.db_name).as_str()).execute().await?;
+
+  Ok(client.with_database(&config.db_name))
+}
+
+// pub async fn clkhs_select_id(config: &Config) -> Result<u64> {
+//   let client = clkhs_init_client(config).await?;
+//   let id = client
+//     .query(format!("SELECT MAX(id) FROM tx_log.{}", TABLE_EVENTS).as_str())
+//     .fetch_one::<u64>()
+//     .await?;
+
+//   println!("id() = {id}");
+//   Ok(id)
+// }
+
+pub async fn clkhs_insert<T: Row + serde::Serialize>(client: &Client, table: &str, rows: &[T]) -> Result<()> {
+  let mut inserter: Inserter<T> = client.inserter(table)?
     .with_max_entries(100_000_000)
     .with_period(Some(Duration::from_secs(10)))
     .with_timeouts(Some(Duration::from_secs(3)), Some(Duration::from_secs(3)));
@@ -63,7 +49,7 @@ pub async fn clkhs_insert_txmsgs(rows: &Vec<TxMessage>) -> Result<()> {
   for i in 0..rows.len(){
     inserter.write(&rows[i]).await?;
     if i % 10_000 == 1{
-      println!("commit_txmsgs:{i} total:{}", rows.len());
+      println!("commit {table}: {i} total:{}", rows.len());
       inserter.commit().await?;
     }
   }
