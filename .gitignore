@@ -1,0 +1,6 @@
+.bsp
+.scala-build
+.vscode
+
+target
+Cargo.lock
