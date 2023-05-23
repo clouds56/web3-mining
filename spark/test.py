@@ -18,6 +18,9 @@ def hex_col(s): return f"hex({s}) as {s}" # reinterpretAsFixedString
 def int_col(s): return s
 def array_u8_col(s): return f"arrayStringConcat(arrayMap(x->hex(x),{s}),'') as {s}"
 EV_COLUMN_DEF = [
+  ("id", int_col),
+  ("tx_idx", int_col),
+  ("tx_message_hash", hex_col),
   ("address", hex_col),
   ("data_len", int_col),
   ("data_prefix32", hex_col),
@@ -43,7 +46,10 @@ df.show()
 # https://github.com/Uniswap/v2-core/blob/v1.0.1/contracts/UniswapV2Factory.sol#L13
 # event PairCreated(address indexed token0, address indexed token1, address pair, uint);
 df = read_spark().option("query", f"select {','.join(EV_COLUMNS)} from tx_log.tx_event as p0 where p0.topic0 = toUInt256('{EV_CREATE_HASH}') and p0.data_len = 64 and p0.topic_num = 3").load()
-df = df.selectExpr('address', "lpad(topic1,40,'0') as token0", "lpad(topic2,40,'0') as token1", "substring(data_prefix128, 25, 40) as pair", "conv(substring(data_prefix128, 65, 64), 16, 10) as length")
+df = df.orderBy("tx_idx", "id").selectExpr(
+  "tx_idx as tx_idx", "tx_message_hash as tx_hash", "address as contract",
+  "lpad(topic1,40,'0') as token0", "lpad(topic2,40,'0') as token1", "substring(data_prefix128, 25, 40) as pair", "conv(substring(data_prefix128, 65, 64), 16, 10) as length"
+)
 df.write.options(header=True).mode("overwrite").csv('event_PairCreated')
 df.count()
 
@@ -51,7 +57,10 @@ df.count()
 # https://github.com/Uniswap/v2-core/blob/v1.0.1/contracts/UniswapV2Pair.sol#L49
 # event Mint(address indexed sender, uint amount0, uint amount1);
 df = read_spark().option("query", f"select {','.join(EV_COLUMNS)} from tx_log.tx_event as p0 where p0.topic0 = toUInt256('{EV_MINT_HASH}') and p0.data_len = 64 and p0.topic_num = 2").load()
-df = df.selectExpr('address', "lpad(topic1,40,'0') as sender", "conv(substring(data_prefix128,1,64), 16, 10) as amount0", "conv(substring(data_prefix128,65,64), 16, 10) as amount1")
+df = df.orderBy("tx_idx", "id").selectExpr(
+  "tx_idx as tx_idx", "tx_message_hash as tx_hash", "address as contract",
+  "lpad(topic1,40,'0') as sender", "conv(substring(data_prefix128,1,64), 16, 10) as amount0", "conv(substring(data_prefix128,65,64), 16, 10) as amount1"
+)
 df.write.options(header=True).mode("overwrite").csv('event_Mint')
 df.count()
 
@@ -59,7 +68,10 @@ df.count()
 # https://github.com/Uniswap/v2-core/blob/v1.0.1/contracts/UniswapV2Pair.sol#L50
 # event Burn(address indexed sender, uint amount0, uint amount1, address indexed to);
 df = read_spark().option("query", f"select {','.join(EV_COLUMNS)} from tx_log.tx_event as p0 where p0.topic0 = toUInt256('{EV_BURN_HASH}') and p0.data_len = 64 and p0.topic_num = 3").load()
-df = df.selectExpr('address', "lpad(topic1,40,'0') as sender", "conv(substring(data_prefix128,1,64), 16, 10) as amount0", "conv(substring(data_prefix128,65,64), 16, 10) as amount1", "lpad(topic2,40,'0') as to")
+df = df.orderBy("tx_idx", "id").selectExpr(
+  "tx_idx as tx_idx", "tx_message_hash as tx_hash", "address as contract",
+  "lpad(topic1,40,'0') as sender", "conv(substring(data_prefix128,1,64), 16, 10) as amount0", "conv(substring(data_prefix128,65,64), 16, 10) as amount1", "lpad(topic2,40,'0') as to"
+)
 df.write.options(header=True).mode("overwrite").csv('event_Burn')
 df.count()
 
@@ -67,8 +79,9 @@ df.count()
 # https://github.com/Uniswap/v2-core/blob/v1.0.1/contracts/UniswapV2Pair.sol#L51-L58
 # event Swap(address indexed sender, uint amount0In, uint amount1In, uint amount0Out, uint amount1Out, address indexed to);
 df = read_spark().option("query", f"select {','.join(EV_COLUMNS)} from tx_log.tx_event as p0 where p0.topic0 = toUInt256('{EV_SWAP_HASH}') and p0.data_len = 128 and p0.topic_num = 3").load()
-df = df.selectExpr(
-  'address',
+df = df.orderBy("tx_idx", "id").selectExpr(
+  "tx_idx as tx_idx", "tx_message_hash as tx_hash",
+  "address as contract",
   "lpad(topic1,40,'0') as sender",
   "conv(substring(data_prefix128,1,64), 16, 10) as amount0In",
   "conv(substring(data_prefix128,65,64), 16, 10) as amount1In",
