@@ -9,6 +9,7 @@ macro_rules! serde_bytes {
     serde_bytes!($proxy, $T, $as, i, <$T>::from(i), <$T>::into(i.clone()));
   };
   ($proxy:ident, $T:ty, $as:ty, $t:ident, $from:expr, $to:expr) => {
+    #[allow(non_camel_case_types)]
     struct $proxy;
 
     impl<'de> DeserializeAs<'de, $T> for $proxy {
@@ -44,7 +45,6 @@ serde_bytes!(u256, U256, [u8; 32], i, U256::from_little_endian(&i), { let mut bu
 pub type TrieHash = H256; // H256
 pub type TxHash = H256; // H256
 pub type Topic = H256; // H256
-pub type Nonce = u64;
 pub type BlockHash = H256; // H256
 pub type Address = H160; // H160
 

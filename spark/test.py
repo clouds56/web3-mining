@@ -5,6 +5,9 @@ from pyspark.sql import SparkSession
 def read_spark(spark:SparkSession=spark):
   return spark.read.format('jdbc').option('driver',driver).option('url',url).option('user',user).option('password',password)
 
+def write_spark(df:DataFrame):
+  return df.write.format('jdbc').option('driver',driver).option('url',url).option('user',user).option('password',password)
+
 # %%
 pgDF = read_spark().option('dbtable', 'system.databases').load()
 print("show system databases:", pgDF.show())
@@ -51,7 +54,14 @@ df = df.orderBy("tx_idx", "id").selectExpr(
   "lpad(topic1,40,'0') as token0", "lpad(topic2,40,'0') as token1", "substring(data_prefix128, 25, 40) as pair", "conv(substring(data_prefix128, 65, 64), 16, 10) as length"
 )
 df.write.options(header=True).mode("overwrite").csv('event_PairCreated')
+# write_spark(df).options(dbtable='event_PairCreated').save()
 df.count()
+
+# %%
+def dataTypeToSql():
+  i.dataType
+for i in df.schema.fields:
+  print(i.name, i.dataType, "" if i.nullable else "NOT NULL")
 
 # %%
 # https://github.com/Uniswap/v2-core/blob/v1.0.1/contracts/UniswapV2Pair.sol#L49
@@ -94,6 +104,9 @@ df.count()
 
 # %%
 df = spark.read.options(header=True).csv('event_Swap')
-df.groupBy('address').count().orderBy('count', ascending=False).show()
+df.groupBy('contract').count().orderBy('count', ascending=False).show()
 
+# %%
+df_test = spark.createDataFrame([], schema=StructType([StructField("f1", DecimalType(40, 0), True)]))
+df_test.show()
 # %%
