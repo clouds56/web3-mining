@@ -115,7 +115,7 @@ pub struct Transaction {
   pub input_len: u64,
   pub input_first_4bytes: H32,
   pub input_last_32bytes: [u8; 32],
-  pub chain_id: Option<u64>,
+  // pub chain_id: Option<u64>,
   pub is_create: bool,
   pub success: bool, // receipt
   pub logs_count: u64, // receipt

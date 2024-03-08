@@ -10,6 +10,7 @@ anyhow = "1.0.71"
 clickhouse = "0.11.4"
 ethers-core = "2.0.4"
 ethers-providers = { version = "2.0.4", features = ["ipc"] }
+futures = "0.3.30"
 primitive-types = "0.12.1"
 serde = { version = "1.0.163", features = ["derive"] }
 serde_with = "3.0.0"
