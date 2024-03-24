@@ -1,6 +1,7 @@
 .bsp
 .scala-build
 .vscode
+.env
 
 target
 Cargo.lock

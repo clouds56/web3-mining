@@ -1,3 +1,3 @@
 [workspace]
-members = ["fetch"]
+members = [ "dump","fetch"]
 resolver = "2"

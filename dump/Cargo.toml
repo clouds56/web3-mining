@@ -1,0 +1,15 @@
+[package]
+name = "dump"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.81"
+dotenvy = "0.15.7"
+ethers-core = "2.0.14"
+ethers-providers = "2.0.14"
+tokio = { version = "1.36.0", features = ["full"] }
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
