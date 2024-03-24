@@ -6,6 +6,7 @@ use std::str::FromStr as _;
 
 use anyhow::Result;
 use ethers_providers::{JsonRpcClient, Middleware as _, Provider};
+use polars::{prelude::ParquetWriter, frame::DataFrame, prelude::NamedFrom as _, series::Series};
 
 async fn get_block_number<P: JsonRpcClient>(client: &Provider<P>) -> Result<u64> {
   let block_number = client.get_block_number().await?;
@@ -28,5 +29,15 @@ async fn main() -> Result<()> {
     fee_per_gas: block_metrics.iter().map(|i| i.fee_per_gas).sum::<u64>() / block_metrics.len() as u64,
   };
   info!(block=?acc_block);
+  let mut df = DataFrame::new(vec![
+    Series::new("tx_count", block_metrics.iter().map(|i| i.tx_count as u32).collect::<Vec<_>>()),
+    Series::new("total_eth", block_metrics.iter().map(|i| i.total_eth).collect::<Vec<_>>()),
+    Series::new("total_fee", block_metrics.iter().map(|i| i.total_fee).collect::<Vec<_>>()),
+    Series::new("gas_used", block_metrics.iter().map(|i| i.gas_used).collect::<Vec<_>>()),
+    Series::new("fee_per_gas", block_metrics.iter().map(|i| i.fee_per_gas).collect::<Vec<_>>()),
+  ])?;
+  println!("{}", df.head(None));
+  let file = std::fs::File::create("block_metrics.parquet")?;
+  ParquetWriter::new(file).finish(&mut df)?;
   Ok(())
 }

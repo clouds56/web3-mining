@@ -2,7 +2,10 @@
 .scala-build
 .vscode
 .env
+.venv
 
 target
 Cargo.lock
 data
+
+*.parquet

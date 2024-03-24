@@ -1,4 +1,4 @@
-use std::sync::{atomic::AtomicUsize, Arc};
+use std::sync::Arc;
 
 use anyhow::Result;
 use ethers_providers::Middleware;
@@ -14,6 +14,7 @@ pub struct BlockMetric {
   // pub burnt_fee: u64, // gwei
   pub fee_per_gas: u64, // wei
 }
+// https://stackoverflow.com/questions/73167416/creating-polars-dataframe-from-vecstruct
 
 #[tracing::instrument(skip_all)]
 pub async fn block_metrics<P: Middleware>(client: P, height: u64) -> Result<Vec<BlockMetric>>
