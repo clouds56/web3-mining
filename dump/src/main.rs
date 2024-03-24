@@ -1,3 +1,5 @@
+#[macro_use] extern crate tracing;
+
 pub mod metrics;
 
 use std::str::FromStr as _;
@@ -17,7 +19,14 @@ async fn main() -> Result<()> {
   let endpoint = format!("http://{}", std::env::var("RETH_HTTP_RPC").as_deref().unwrap_or("127.0.0.1:8545"));
   let client = Provider::new(ethers_providers::Http::from_str(&endpoint)?);
   println!("hello, current height is {}", get_block_number(&client).await?);
-  let transaction_count = metrics::block::transaction_count(client, 100000).await?;
-  println!("transaction count: {:?}", transaction_count.iter().sum::<usize>());
+  let block_metrics = metrics::block::block_metrics(client, 100000).await?;
+  let acc_block = metrics::block::BlockMetric {
+    tx_count: block_metrics.iter().map(|i| i.tx_count).sum::<usize>(),
+    total_eth: block_metrics.iter().map(|i| i.total_eth).sum::<f64>(),
+    gas_used: block_metrics.iter().map(|i| i.gas_used).sum::<u64>(),
+    total_fee: block_metrics.iter().map(|i| i.total_fee).sum::<u64>(),
+    fee_per_gas: block_metrics.iter().map(|i| i.fee_per_gas).sum::<u64>() / block_metrics.len() as u64,
+  };
+  info!(block=?acc_block);
   Ok(())
 }
