@@ -1,18 +1,28 @@
 import { EChartsOption } from "echarts"
 
-export function lineOption(data: any): EChartsOption {
+export interface Data {
+  name: string
+  data: { [name: string]: (number | null)[] }
+  time: (number | null)[]
+}
+
+export function lineOption(data: Data, col: string | number): EChartsOption {
   return {
     tooltip: {
       trigger: "axis",
     },
     dataset: {
-      // id: "test_data",
-      source: data,
+      source: data.data,
     },
-    xAxis: { type: "time" },
+    xAxis: {
+      type: "time",
+      // @ts-ignore: this is a bug in the types
+      data: data.time,
+    },
     yAxis: { type: "value" },
     series: {
       type: "line",
+      encode: { y: col },
     },
   }
 }

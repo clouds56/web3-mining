@@ -1,15 +1,21 @@
 <script setup lang="ts">
-import { ref, provide, shallowRef, watch } from "vue"
+import { ref, provide, shallowRef, watch, computed } from "vue"
 import { invoke } from "@tauri-apps/api/tauri"
+import { lineOption, type Data } from "../lib/data"
 
 // tauri
 
 const data_names = ref<string[]>([])
 const name = ref("")
-const data = shallowRef<any>(null)
+const data = shallowRef<Data | null>(null)
+const selected_col = shallowRef<string>("")
+const data_key = computed(() => Object.keys(data.value?.data ?? {}))
 
 const select = (n: string) => {
   name.value = n
+}
+const select_col = (n: string) => {
+  selected_col.value = n
 }
 
 const greet = async () => {
@@ -53,11 +59,11 @@ use([
 ])
 
 provide(THEME_KEY, "dark")
-import { lineOption } from "../lib/data"
+
 const echart_data = ref<EChartsOption>({})
-watch(data, (new_data) => {
-  if (!new_data) return
-  echart_data.value = lineOption(new_data)
+watch([data, selected_col], ([new_data, col]) => {
+  if (!new_data || !col) return
+  echart_data.value = lineOption(new_data, col)
 })
 </script>
 
@@ -69,16 +75,29 @@ watch(data, (new_data) => {
       <button type="submit">Greet</button>
     </form>
 
-    <div class="flex flex-row grow">
+    <div class="flex flex-row flex-auto">
       <!--  left panel -->
-      <ul class="flex flex-row basis-[200px] select-none">
-        <li v-for="n in data_names">
-          <label>
-            <input type="radio" :name="n" @click="select(n)" />
-            <span class="ml-1">{{ n }}</span>
+      <div class="flex flex-col basis-[200px] grow-0">
+        <ul class="flex flex-col basis-[100px] flex-auto select-none overflow-scroll">
+          <li v-for="n in data_names">
+            <label>
+              <input type="radio" :name="n" @click="select(n)" />
+              <span class="ml-1">{{ n }}</span>
+            </label>
+          </li>
+        </ul>
+        <form class="flex flex-col basis-[50px] flex-auto overflow-scroll">
+          <label v-for="col in data_key">
+            <input
+              type="radio"
+              :name="col"
+              @click="select_col(col)"
+              :checked="col == selected_col"
+            />
+            <pre class="ml-1 inline-block">{{ col }}</pre>
           </label>
-        </li>
-      </ul>
+        </form>
+      </div>
       <!-- main panel -->
       <div class="flex flex-row grow bg-gray-500">
         <v-chart class="chart" :option="echart_data" autoresize />
