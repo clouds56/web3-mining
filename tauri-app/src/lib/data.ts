@@ -7,7 +7,6 @@ export function lineOption(data: any): EChartsOption {
     },
     dataset: {
       // id: "test_data",
-      dimensions: ["time", "value"],
       source: data,
     },
     xAxis: { type: "time" },

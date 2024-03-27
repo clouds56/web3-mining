@@ -22,6 +22,8 @@ async fn main() -> Result<()> {
   println!("hello, current height is {}", get_block_number(&client).await?);
   let block_metrics = metrics::block::block_metrics(client, 100000).await?;
   let acc_block = metrics::block::BlockMetric {
+    height: block_metrics.iter().map(|i| i.height).reduce(u64::max).unwrap_or_default(),
+    timestamp: block_metrics.iter().map(|i| i.timestamp).reduce(u64::max).unwrap_or_default(),
     tx_count: block_metrics.iter().map(|i| i.tx_count).sum::<usize>(),
     total_eth: block_metrics.iter().map(|i| i.total_eth).sum::<f64>(),
     gas_used: block_metrics.iter().map(|i| i.gas_used).sum::<u64>(),
@@ -30,6 +32,8 @@ async fn main() -> Result<()> {
   };
   info!(block=?acc_block);
   let mut df = DataFrame::new(vec![
+    Series::new("height", block_metrics.iter().map(|i| i.height).collect::<Vec<_>>()),
+    Series::new("timestamp", block_metrics.iter().map(|i| i.timestamp).collect::<Vec<_>>()),
     Series::new("tx_count", block_metrics.iter().map(|i| i.tx_count as u32).collect::<Vec<_>>()),
     Series::new("total_eth", block_metrics.iter().map(|i| i.total_eth).collect::<Vec<_>>()),
     Series::new("total_fee", block_metrics.iter().map(|i| i.total_fee).collect::<Vec<_>>()),

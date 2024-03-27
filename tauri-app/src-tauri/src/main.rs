@@ -3,9 +3,9 @@
 
 #[macro_use] extern crate tracing;
 
-use std::{fmt::Display, path::PathBuf};
+use std::{collections::{BTreeMap, HashMap}, fmt::Display, path::PathBuf};
 
-use rand::Rng;
+use polars::lazy::frame::LazyFrame;
 use tauri::State;
 use tracing_subscriber::fmt::format::FmtSpan;
 
@@ -43,15 +43,25 @@ struct Data {
 }
 #[tauri::command(rename_all = "snake_case")]
 #[instrument(level="info", fields(data_dir=%config.data_dir.display(), ok=config.data_dir.is_dir()))]
-async fn get_data(config: State<'_, Config>, name: String) -> Result<Data> {
-  // let file = config.data_dir.join(name);
-
-  let mut rng = rand::thread_rng();
-  let mut data = Vec::new();
-  for i in 0..1000 {
-    data.push((chrono::NaiveDate::from_ymd_opt(2021, 1, 1).unwrap() + chrono::Duration::try_days(i).unwrap(), rng.gen()));
+async fn get_data(config: State<'_, Config>, name: String) -> Result<BTreeMap<String, Vec<Option<f64>>>> {
+  use polars::{datatypes::*, lazy::dsl::*};
+  use std::ops::Mul;
+  let path = config.data_dir.join(&name);
+  let df = LazyFrame::scan_parquet(&path, Default::default())?
+    .filter(col("timestamp").gt(lit(0)))
+    .with_column(col("timestamp").mul(lit(1000)).cast(DataType::Datetime(TimeUnit::Milliseconds, None)).cast(DataType::Date).alias("_date"))
+    .group_by([col("_date")]).agg([
+      col("tx_count").cast(DataType::UInt64).sum(),
+    ]).with_column(col("_date").cast(DataType::Datetime(TimeUnit::Milliseconds, None)).cast(DataType::Float64))
+    .sort_by_exprs([col("_date")], [false], false, false)
+    ;
+  info!(df=%df.clone().limit(10).collect()?.head(None));
+  let df = df.collect()?;
+  let mut result = BTreeMap::new();
+  for i in df.get_columns() {
+    result.insert(i.name().to_string(), i.cast(&DataType::Float64)?.f64()?.to_vec());
   }
-  Ok(Data { name,data })
+  Ok(result)
 }
 
 fn main() {

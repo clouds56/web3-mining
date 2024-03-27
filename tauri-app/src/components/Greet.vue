@@ -57,7 +57,7 @@ import { lineOption } from "../lib/data"
 const echart_data = ref<EChartsOption>({})
 watch(data, (new_data) => {
   if (!new_data) return
-  echart_data.value = lineOption(new_data.data)
+  echart_data.value = lineOption(new_data)
 })
 </script>
 
