@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{ops::Range, sync::Arc};
 
 use anyhow::Result;
 use ethers_providers::Middleware;
@@ -19,10 +19,11 @@ pub struct BlockMetric {
 // https://stackoverflow.com/questions/73167416/creating-polars-dataframe-from-vecstruct
 
 #[tracing::instrument(skip_all)]
-pub async fn block_metrics<P: Middleware>(client: P, height: u64) -> Result<Vec<BlockMetric>>
+pub async fn block_metrics<P: Middleware>(client: P, height_range: Range<u64>) -> Result<Vec<BlockMetric>>
 where <P as Middleware>::Error: 'static {
-  let result = Arc::new(Mutex::new(vec![BlockMetric::default(); height as usize]));
-  stream::iter(0..height).for_each_concurrent(500, |i| {
+  let result = Arc::new(Mutex::new(vec![BlockMetric::default(); height_range.clone().count()]));
+  let height_start = height_range.start;
+  stream::iter(height_range).for_each_concurrent(500, |i| {
     let client = &client;
     let result = result.clone();
     async move {
@@ -37,7 +38,7 @@ where <P as Middleware>::Error: 'static {
         total_fee: (total_fee / 1_000_000_000) as u64,
         fee_per_gas: (total_fee / block.gas_used.as_u128().max(1)) as u64,
       };
-      *result.lock().await.get_mut(i as usize).unwrap() = target;
+      *result.lock().await.get_mut((i - height_start) as usize).unwrap() = target;
     }
   }).await;
   let result = result.lock().await.clone();

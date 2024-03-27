@@ -3,6 +3,7 @@
 .vscode
 .env
 .venv
+.DS_Store
 
 /target
 /Cargo.lock
@@ -10,3 +11,4 @@
 /db
 
 *.parquet
+stage.toml
