@@ -5,8 +5,8 @@ import Greet from "./components/Greet.vue";
 </script>
 
 <template>
-  <div class="container">
-    <h1>Welcome to Tauri!</h1>
+  <div class="flex flex-col mt-5">
+    <h1 class="text-center text-3xl mb-3">Welcome to Tauri!</h1>
 
     <Greet />
   </div>

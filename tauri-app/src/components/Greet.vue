@@ -3,7 +3,7 @@ import { ref } from "vue";
 import { invoke } from "@tauri-apps/api/tauri";
 
 const greetMsg = ref("");
-const name = ref("");
+const name = ref("block_metrics.parquet");
 
 async function greet() {
   // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
