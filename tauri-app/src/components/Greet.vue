@@ -19,3 +19,9 @@ async function greet() {
 
   <p>{{ greetMsg }}</p>
 </template>
+
+<style scoped>
+#greet-input {
+  margin-right: 5px;
+}
+</style>
