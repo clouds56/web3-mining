@@ -4,8 +4,9 @@
 .env
 .venv
 
-target
-Cargo.lock
-data
+/target
+/Cargo.lock
+/data
+/db
 
 *.parquet

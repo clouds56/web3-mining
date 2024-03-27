@@ -37,7 +37,8 @@ async fn main() -> Result<()> {
     Series::new("fee_per_gas", block_metrics.iter().map(|i| i.fee_per_gas).collect::<Vec<_>>()),
   ])?;
   println!("{}", df.head(None));
-  let file = std::fs::File::create("block_metrics.parquet")?;
+  std::fs::create_dir_all("data")?;
+  let file = std::fs::File::create("data/block_metrics.parquet")?;
   ParquetWriter::new(file).finish(&mut df)?;
   Ok(())
 }
