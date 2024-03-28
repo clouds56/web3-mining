@@ -5,7 +5,7 @@
 
 use std::{collections::BTreeMap, fmt::Display, path::PathBuf};
 
-use polars::{chunked_array::ops::SortOptions, lazy::frame::LazyFrame};
+use polars::{chunked_array::ops::SortOptions, frame::DataFrame, lazy::frame::{IntoLazy, LazyFrame}};
 use tauri::State;
 use tracing_subscriber::fmt::format::FmtSpan;
 
@@ -16,24 +16,72 @@ struct Config {
 
 #[derive(serde::Serialize)]
 pub struct Error(String);
-impl<T: Display> From<T> for Error {
+impl<T: std::fmt::Debug + Display> From<T> for Error {
   fn from(value: T) -> Self {
+    error!(?value, %value, "error");
     Error(value.to_string())
   }
 }
 pub type Result<T, E=Error> = std::result::Result<T, E>;
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Dataset {
+  pub name: String,
+  pub collection: Vec<(usize, String)>,
+  pub max: usize,
+}
+impl Dataset {
+  pub fn new(name: String, mut collection: Vec<(usize, String)>) -> Self {
+    collection.sort();
+    let max = collection.last().map(|i| i.0).unwrap_or_default();
+    Self { name, collection, max }
+  }
+}
+
+fn split_name<'a>(name: &'a str, ext: &str) -> Option<(&'a str, usize)> {
+  let mut split = name.rsplitn(3, '.');
+  if split.next()? != ext { return None }
+  let n =  split.next()?.parse().ok()?;
+  let b = split.next()?;
+  assert_eq!(split.next(), None);
+  Some((b, n))
+}
+
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command(rename_all = "snake_case")]
 #[instrument(level="info", fields(data_dir=%config.data_dir.display(), ok=config.data_dir.is_dir()))]
-async fn list_data_names(config: State<'_, Config>) -> Result<Vec<String>> {
-  let mut result = Vec::new();
+async fn list_data_names(config: State<'_, Config>) -> Result<Vec<Dataset>> {
+  let mut map = BTreeMap::<_, Vec<_>>::new();
   for i in std::fs::read_dir(&config.data_dir)? {
     let i = i?;
     debug!(?i, ok=i.file_type()?.is_dir());
-    result.push(i.file_name().to_string_lossy().to_string())
+    let filename = i.file_name().to_string_lossy().to_string();
+    if let Some((name, idx)) = split_name(&filename, "parquet") {
+      map.entry(name.to_string()).or_default().push((idx, filename));
+      continue;
+    }
   }
-  Ok(result)
+  Ok(map
+    .into_iter()
+    .map(|(name, collection)| Dataset::new(name, collection))
+    .collect())
+}
+
+fn get_data_info(config: &Config, name: &str) -> Result<Dataset> {
+  let mut collection = Vec::new();
+  for i in std::fs::read_dir(&config.data_dir)? {
+    let i = i?;
+    let filename = i.file_name().to_string_lossy().to_string();
+    if !filename.starts_with(&name) {
+      continue
+    }
+
+    if let Some((n, idx)) = split_name(&filename, "parquet") {
+      if n != name { continue }
+      collection.push((idx, filename));
+    }
+  }
+  Ok(Dataset::new(name.to_string(), collection))
 }
 
 #[derive(serde::Serialize)]
@@ -47,8 +95,22 @@ struct Data {
 async fn get_data(config: State<'_, Config>, name: String) -> Result<Data> {
   use polars::{datatypes::*, lazy::dsl::*};
   use std::ops::Mul;
-  let path = config.data_dir.join(&name);
-  let df = LazyFrame::scan_parquet(&path, Default::default())?;
+  let info = get_data_info(&config, &name)?;
+  if info.collection.is_empty() {
+    return Err("nothing in collection".into())
+  }
+  let df_s = info.collection.iter().map(|(_, f)| {
+    let path = config.data_dir.join(&f);
+    LazyFrame::scan_parquet(&path, Default::default())?.collect()
+  }).collect::<Result<Vec<_>, _>>()?;
+  let mut df = None::<DataFrame>;
+  for b in df_s {
+    df = Some(match df {
+      Some(a) => a.vstack(&b)?,
+      None => b
+    })
+  }
+  let df = df.unwrap().lazy();
   info!(df=%df.clone().limit(10).collect()?.head(None));
   let df = df
     .filter(col("timestamp").gt(lit(0)))
@@ -56,6 +118,10 @@ async fn get_data(config: State<'_, Config>, name: String) -> Result<Data> {
     .group_by([col("_date")]).agg([
       col("total_eth").sum(),
       col("tx_count").cast(DataType::UInt64).sum(),
+      col("total_fee").mean(),
+      col("gas_used").mean(),
+      col("fee_per_gas").mean().alias("fee_per_gas:mean"),
+      col("fee_per_gas").median().alias("fee_per_gas:median"),
     ]);
   info!(agg=%df.clone().limit(10).collect()?.head(None));
   let df = df

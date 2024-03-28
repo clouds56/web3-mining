@@ -16,11 +16,12 @@ async fn get_block_number<P: JsonRpcClient>(client: &Provider<P>) -> Result<u64>
 
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Stage {
+  _cut: Option<u64>,
   #[serde(default)]
   block_metrics: u64,
 }
 
-const CUT: u64 = 10000;
+const DEFAULT_CUT: u64 = 1000000;
 /// A cut means 0..CUT, CUT..2*CUT, etc.
 /// which means block number 10000 is in a new file.
 /// just like what reth do.
@@ -29,18 +30,19 @@ const fn next_cut(i: u64, cut: u64) -> u64 {
 }
 
 async fn run<M: Middleware, P: AsRef<Path>>(client: &M, data_dir: P, mut start: u64, end: u64, stage: &mut Stage) -> Result<()> where M::Error: 'static {
+  let cut = stage._cut.unwrap_or(DEFAULT_CUT);
   while start < end {
-    let checkpoint = next_cut(start, CUT).min(end);
+    let checkpoint = next_cut(start, cut).min(end);
     info!(start, end, "running for {}..{}", start, checkpoint);
     if start < checkpoint {
-      let tmp_filename = data_dir.as_ref().join(format!("block_metrics_{}.{}.parquet.tmp", CUT, start/CUT));
+      let tmp_filename = data_dir.as_ref().join(format!("block_metrics_{}.{}.parquet.tmp", cut, start/cut));
       let mut df = fetch::fetch_blocks(client, start, checkpoint).await?;
-      if start % CUT != 0 {
+      if start % cut != 0 {
         let old_file = std::fs::File::open(tmp_filename.with_extension(""))?;
         let old_df = ParquetReader::new(old_file).finish()?;
         df = old_df.vstack(&df)?;
       }
-      assert_eq!(df.shape().0 as u64, checkpoint - start + start % CUT);
+      assert_eq!(df.shape().0 as u64, checkpoint - start + start % cut);
       let file = std::fs::File::create(&tmp_filename)?;
       ParquetWriter::new(file).finish(&mut df)?;
       std::fs::rename(&tmp_filename, tmp_filename.with_extension(""))?;
@@ -75,6 +77,7 @@ fn save_stage<P: AsRef<Path>>(data_dir: P, stage: &Stage) -> Result<()> {
 async fn main() -> Result<()> {
   dotenvy::dotenv().ok();
   tracing_subscriber::fmt::fmt().with_span_events(tracing_subscriber::fmt::format::FmtSpan::CLOSE).init();
+  info!(cwd=%std::env::current_dir().unwrap().display());
   let endpoint = format!("http://{}", std::env::var("RETH_HTTP_RPC").as_deref().unwrap_or("127.0.0.1:8545"));
   let data_dir = std::env::var("DATA_DIR").unwrap_or("data".to_string());
   std::fs::create_dir_all(&data_dir)?;
@@ -83,11 +86,13 @@ async fn main() -> Result<()> {
   info!(block_length, "hello");
 
   let mut stage = load_stage(&data_dir)?;
+  let cut = stage._cut.unwrap_or(DEFAULT_CUT);
+  stage._cut = Some(cut);
   info!(?stage);
 
-  let magic_number = 98672723;
-  let block_length = magic_number * (stage.block_metrics + 1) % (10 * CUT) + stage.block_metrics;
-  info!(block_length, "faking");
+  // let magic_number = 98672723;
+  // let block_length = magic_number * (stage.block_metrics + 1) % (10 * DEFAULT_CUT) + stage.block_metrics;
+  // info!(block_length, "faking");
   run(&client, &data_dir, stage.block_metrics, block_length+1, &mut stage).await?;
 
   save_stage(&data_dir, &stage)?;

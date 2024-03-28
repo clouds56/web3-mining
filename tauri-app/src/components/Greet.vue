@@ -4,8 +4,13 @@ import { invoke } from "@tauri-apps/api/tauri"
 import { lineOption, type Data } from "../lib/data"
 
 // tauri
+interface DatasetInfo {
+  name: string
+  collection: string[]
+  max: number
+}
 
-const data_names = ref<string[]>([])
+const dataset_infos = ref<DatasetInfo[]>([])
 const name = ref("")
 const data = shallowRef<Data | null>(null)
 const selected_col = shallowRef<string>("")
@@ -20,7 +25,7 @@ const select_col = (n: string) => {
 
 const greet = async () => {
   // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
-  data_names.value = await invoke("list_data_names")
+  dataset_infos.value = await invoke("list_data_names")
 }
 
 const fetch_data = async () => {
@@ -79,10 +84,10 @@ watch([data, selected_col], ([new_data, col]) => {
       <!--  left panel -->
       <div class="flex flex-col basis-[200px] grow-0">
         <ul class="flex flex-col basis-[100px] flex-auto select-none overflow-scroll">
-          <li v-for="n in data_names">
+          <li v-for="info in dataset_infos">
             <label>
-              <input type="radio" :name="n" @click="select(n)" />
-              <span class="ml-1">{{ n }}</span>
+              <input type="radio" :name="info.name" @click="select(info.name)" />
+              <span class="ml-1">{{ info.name }}[{{ info.max }}]</span>
             </label>
           </li>
         </ul>
