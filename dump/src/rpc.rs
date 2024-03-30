@@ -39,10 +39,14 @@ where <P as Middleware>::Error: 'static {
     Some(topic) => filter.topic0(topic),
     _ => filter,
   };
-  let mut query = client.get_logs_paginated(&filter, 1000);
+  info!(?filter);
+  let query = client.get_logs(&filter).await?;
+  let mut query = query.into_iter();
   let mut result = Vec::new();
-  while let Some(log) = query.next().await {
-    let log = log?;
+  while let Some(log) = query.next() {
+    if let Some(block_number) = log.block_number {
+      info!(n=block_number.as_u64(), "fetching logs");
+    }
     result.push(log)
   }
   Ok(result)

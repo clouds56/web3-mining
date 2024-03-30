@@ -52,7 +52,7 @@ pub async fn fetch_blocks<P: Middleware>(client: &P, height_from: u64, height_to
 where
   P::Error: 'static
 {
-  use polars::prelude::col;
+  use polars::lazy::dsl::col;
   let block_metrics = rpc::get_blocks(client, height_from..height_to).await?;
   debug!(block_metrics.len=?block_metrics.len(), height_from, height_to);
   let df = BlockMetric::to_df(&block_metrics)?;
