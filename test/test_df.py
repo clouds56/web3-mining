@@ -19,10 +19,16 @@ df = pl.read_parquet("block_metrics.parquet")
 df.mean()
 
 # %%
-files = Path("data").rglob("uniswap_pair_*.parquet")
+files = Path("data").rglob("uniswap_pair_old_*.parquet")
 file = list(files)[0]
 df = pl.read_parquet(file)
 dfg = df.group_by('topic0').agg([pl.first('tx_hash'), pl.count('height').alias('count')]).sort('count', descending=True)
 list(zip(*[list(dfg[col]) for col in dfg.columns]))
+
+# %%
+files = Path("data").rglob("uniswap_pair_0x*.parquet")
+file = list(files)[0]
+df = pl.read_parquet(file)
+df
 
 # %%
