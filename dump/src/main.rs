@@ -36,7 +36,7 @@ async fn run<M: Middleware, P: AsRef<Path>>(client: &M, data_dir: P, mut start: 
     info!(start, end, "running for {}..{}", start, checkpoint);
     if start < checkpoint {
       let tmp_filename = data_dir.as_ref().join(format!("block_metrics_{}.{}.parquet.tmp", cut, start/cut));
-      let mut df = metrics::fetch::fetch_blocks(client, start, checkpoint).await?;
+      let mut df = metrics::block::fetch_blocks(client, start, checkpoint).await?;
       if start % cut != 0 {
         let old_file = std::fs::File::open(tmp_filename.with_extension(""))?;
         let old_df = ParquetReader::new(old_file).finish()?;
