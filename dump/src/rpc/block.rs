@@ -18,7 +18,7 @@ pub struct BlockMetric {
 }
 // https://stackoverflow.com/questions/73167416/creating-polars-dataframe-from-vecstruct
 
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(level = "debug", skip_all, fields(height_range=format!("{}..{}", height_range.start, height_range.end)))]
 pub async fn block_metrics<P: Middleware>(client: P, height_range: Range<u64>) -> Result<Vec<BlockMetric>>
 where <P as Middleware>::Error: 'static {
   let result = Arc::new(Mutex::new(vec![BlockMetric::default(); height_range.clone().count()]));

@@ -2,14 +2,14 @@ use anyhow::Result;
 use ethers_providers::Middleware;
 use polars::{frame::DataFrame, prelude::NamedFrom as _, series::Series};
 
-use crate::metrics;
+use crate::rpc;
 
 pub async fn fetch_blocks<P: Middleware>(client: &P, height_from: u64, height_to: u64) -> Result<DataFrame>
 where
   P::Error: 'static
 {
-  let block_metrics = metrics::block::block_metrics(client, height_from..height_to).await?;
-  let acc_block = metrics::block::BlockMetric {
+  let block_metrics = rpc::block::block_metrics(client, height_from..height_to).await?;
+  let acc_block = rpc::block::BlockMetric {
     height: block_metrics.iter().map(|i| i.height).reduce(u64::max).unwrap_or_default(),
     timestamp: block_metrics.iter().map(|i| i.timestamp).reduce(u64::max).unwrap_or_default(),
     tx_count: block_metrics.iter().map(|i| i.tx_count).sum::<usize>(),
