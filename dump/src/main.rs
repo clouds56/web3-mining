@@ -21,6 +21,8 @@ pub struct Stage {
   _cut: Option<u64>,
   #[serde(default)]
   block_metrics: u64,
+  #[serde(default)]
+  uniswap_factory: u64,
 }
 
 const DEFAULT_CUT: u64 = 1000000;
@@ -171,12 +173,14 @@ async fn main() -> Result<()> {
 
   RunConfig {
     data_dir: data_dir.as_ref(),
-    start: 1_000_000,
-    end: 1_100_000,
+    start: stage.uniswap_factory.max(9_000_000),
+    end: block_length,
     cut,
-    name: "uniswap",
+    name: "uniswap_factory",
     executor: &|start, end| metrics::uniswap::fetch_uniswap(&client, start, end),
-  }.run(()).await?;
+  }.run(|e: RunEvent| {
+    stage.uniswap_factory = e.checkpoint;
+  }).await?;
 
   save_stage(&data_dir, &stage)?;
   Ok(())
