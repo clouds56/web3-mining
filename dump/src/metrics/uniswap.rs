@@ -8,12 +8,13 @@ use crate::rpc;
 use super::{ToChecksumHex, ToHex};
 
 #[allow(non_upper_case_globals)]
-mod consts {
+pub mod consts {
   use ethers_core::types::{Address, H256};
 
   lazy_static::lazy_static! {
     pub static ref TOPIC_PairCreated: H256 = "0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9".parse().unwrap();
     pub static ref CONTRACT_UniswapV2Factory: Address = "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f".parse().unwrap();
+    pub static ref CONTRACT_UniswapV2_WETH_USDC: Address = "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc".parse().unwrap();
   }
 }
 
@@ -57,11 +58,11 @@ impl LogMetric {
       Series::new("block_index", log_metrics.iter().map(|i| i.block_index).collect::<Vec<_>>()),
       Series::new("contract", log_metrics.iter().map(|i| i.contract.to_checksum_hex()).collect::<Vec<_>>()),
       Series::new("tx_hash", log_metrics.iter().map(|i| i.tx_hash.clone()).collect::<Vec<_>>()),
-      Series::new("topic0", log_metrics.iter().map(|i| i.topic0.to_string()).collect::<Vec<_>>()),
-      Series::new("topic1", log_metrics.iter().map(|i| i.topic1.map(|i| i.to_string())).collect::<Vec<_>>()),
-      Series::new("topic2", log_metrics.iter().map(|i| i.topic2.map(|i| i.to_string())).collect::<Vec<_>>()),
-      Series::new("topic3", log_metrics.iter().map(|i| i.topic3.map(|i| i.to_string())).collect::<Vec<_>>()),
-      // Series::new("topic4", log_metrics.iter().map(|i| i.topic4.map(|i| i.to_string())).collect::<Vec<_>>()),
+      Series::new("topic0", log_metrics.iter().map(|i| i.topic0.to_hex()).collect::<Vec<_>>()),
+      Series::new("topic1", log_metrics.iter().map(|i| i.topic1.map(|i| i.to_hex())).collect::<Vec<_>>()),
+      Series::new("topic2", log_metrics.iter().map(|i| i.topic2.map(|i| i.to_hex())).collect::<Vec<_>>()),
+      Series::new("topic3", log_metrics.iter().map(|i| i.topic3.map(|i| i.to_hex())).collect::<Vec<_>>()),
+      // Series::new("topic4", log_metrics.iter().map(|i| i.topic4.map(|i| i.to_hex())).collect::<Vec<_>>()),
     ])?;
     Ok(df)
   }
@@ -124,7 +125,7 @@ impl Log_CreatePair {
   }
 }
 
-pub async fn fetch_uniswap<P: Middleware>(client: &P, height_from: u64, height_to: u64) -> Result<DataFrame>
+pub async fn fetch_uniswap_factory<P: Middleware>(client: &P, height_from: u64, height_to: u64) -> Result<DataFrame>
 where
   P::Error: 'static
 {
@@ -132,6 +133,18 @@ where
   debug!(logs.len=?logs.len(), height_from, height_to);
   let logs = logs.into_iter().map(LogMetric::from).filter_map(|i| Log_CreatePair::try_from(i).ok()).collect::<Vec<_>>();
   let df = Log_CreatePair::to_df(&logs)?;
+  debug!("{}", df.head(None));
+  Ok(df)
+}
+
+pub async fn fetch_uniswap_pair<P: Middleware>(client: &P, height_from: u64, height_to: u64, pair: Address) -> Result<DataFrame>
+where
+  P::Error: 'static
+{
+  let logs = rpc::get_logs(client, None, Some(pair), height_from..height_to).await?;
+  debug!(logs.len=?logs.len(), height_from, height_to);
+  let logs = logs.into_iter().map(LogMetric::from).collect::<Vec<_>>();
+  let df = LogMetric::to_df(&logs)?;
   debug!("{}", df.head(None));
   Ok(df)
 }

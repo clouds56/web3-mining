@@ -3,13 +3,15 @@
 pub mod rpc;
 pub mod metrics;
 
-use std::{path::Path, str::FromStr as _};
+use std::{collections::HashMap, path::Path, str::FromStr as _};
 
 use anyhow::Result;
 use ethers_providers::{JsonRpcClient, Middleware, Provider};
 use futures::Future;
 use polars::{frame::DataFrame, io::{parquet::{ParquetReader, ParquetWriter}, SerReader}};
 use tracing_subscriber::fmt::format::FmtSpan;
+
+use crate::metrics::ToChecksumHex;
 
 async fn get_block_number<P: JsonRpcClient>(client: &Provider<P>) -> Result<u64> {
   let block_number = client.get_block_number().await?;
@@ -23,6 +25,8 @@ pub struct Stage {
   block_metrics: u64,
   #[serde(default)]
   uniswap_factory: u64,
+  #[serde(default)]
+  uniswap_pair: HashMap<String, u64>,
 }
 
 const DEFAULT_CUT: u64 = 1000000;
@@ -118,7 +122,9 @@ fn load_stage<P: AsRef<Path>>(data_dir: P) -> Result<Stage> {
     Ok(content) => Ok(toml::from_str(&content)?),
     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
       info!(stage_file=%filename.display(), "stage file not found, using default");
-      Ok(Stage::default())
+      let mut stage = Stage::default();
+      stage.uniswap_pair.insert(metrics::uniswap::consts::CONTRACT_UniswapV2_WETH_USDC.to_checksum_hex(), 10_000_000);
+      Ok(stage)
     }
     Err(e) => return Err(e)?,
   }
@@ -139,8 +145,8 @@ async fn main() -> Result<()> {
     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
     .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
     .init();
-  info!(cwd=%std::env::current_dir().unwrap().display());
   let endpoint = format!("http://{}", std::env::var("RETH_HTTP_RPC").as_deref().unwrap_or("127.0.0.1:8545"));
+  info!(cwd=%std::env::current_dir().unwrap().display(), endpoint);
   let data_dir = std::env::var("DATA_DIR").unwrap_or("data".to_string());
   std::fs::create_dir_all(&data_dir)?;
   let client = Provider::new(ethers_providers::Http::from_str(&endpoint)?);
@@ -177,10 +183,23 @@ async fn main() -> Result<()> {
     end: block_length,
     cut,
     name: "uniswap_factory",
-    executor: &|start, end| metrics::uniswap::fetch_uniswap(&client, start, end),
+    executor: &|start, end| metrics::uniswap::fetch_uniswap_factory(&client, start, end),
   }.run(|e: RunEvent| {
     stage.uniswap_factory = e.checkpoint;
   }).await?;
+
+  for pair in stage.uniswap_pair.clone() {
+    RunConfig {
+      data_dir: data_dir.as_ref(),
+      start: pair.1,
+      end: pair.1+100_000,
+      cut,
+      name: &format!("uniswap_pair_{}", pair.0),
+      executor: &|start, end| metrics::uniswap::fetch_uniswap_pair(&client, start, end, pair.0.parse().unwrap()),
+    }.run(|e: RunEvent| {
+      stage.uniswap_pair.insert(pair.0.clone(), e.checkpoint);
+    }).await?;
+  }
 
   save_stage(&data_dir, &stage)?;
   Ok(())
