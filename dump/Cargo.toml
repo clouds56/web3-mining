@@ -11,6 +11,7 @@ dotenvy = "0.15.7"
 ethers-core = "2.0.14"
 ethers-providers = "2.0.14"
 futures = "0.3.30"
+lazy_static = "1.4.0"
 polars = { version = "0.38.3", features = ["parquet"] }
 serde = { version = "1.0.197", features = ["derive"] }
 tokio = { version = "1.36.0", features = ["full"] }
