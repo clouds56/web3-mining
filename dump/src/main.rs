@@ -19,6 +19,13 @@ async fn get_block_number<P: JsonRpcClient>(client: &Provider<P>) -> Result<u64>
 }
 
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PairStage {
+  pub contract: String,
+  pub crated: u64,
+  pub checkpoint: Option<u64>,
+}
+
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Stage {
   _cut: Option<u64>,
   #[serde(default)]
@@ -26,7 +33,7 @@ pub struct Stage {
   #[serde(default)]
   uniswap_factory: u64,
   #[serde(default)]
-  uniswap_pair: HashMap<String, u64>,
+  uniswap_pair: HashMap<String, PairStage>,
 }
 
 const DEFAULT_CUT: u64 = 1000000;
@@ -118,16 +125,28 @@ impl<'a, Fn: Executor> RunConfig<'a, Fn> {
 
 fn load_stage<P: AsRef<Path>>(data_dir: P) -> Result<Stage> {
   let filename = data_dir.as_ref().join("stage.toml");
-  match std::fs::read_to_string(&filename) {
-    Ok(content) => Ok(toml::from_str(&content)?),
+  let mut stage: Stage = match std::fs::read_to_string(&filename) {
+    Ok(content) => toml::from_str(&content)?,
     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
       info!(stage_file=%filename.display(), "stage file not found, using default");
-      let mut stage = Stage::default();
-      stage.uniswap_pair.insert(metrics::uniswap::consts::CONTRACT_UniswapV2_WETH_USDC.to_checksum_hex(), 10_000_000);
-      Ok(stage)
+      Stage::default()
     }
     Err(e) => return Err(e)?,
-  }
+  };
+
+  stage.uniswap_pair.entry("usdc_weth".to_string()).or_insert_with(|| PairStage {
+    contract: metrics::uniswap::consts::CONTRACT_UniswapV2_USDC_WETH.to_checksum_hex(),
+    crated: 10_000_000,
+    checkpoint: None,
+  });
+  stage.uniswap_pair.entry("dai_usdc".to_string()).or_insert_with(|| PairStage {
+    contract: metrics::uniswap::consts::CONTRACT_UniswapV2_DAI_USDC.to_checksum_hex(),
+    crated: 10_000_000,
+    checkpoint: None,
+  });
+  // save_stage(data_dir.as_ref(), &stage).ok();
+
+  Ok(stage)
 }
 
 fn save_stage<P: AsRef<Path>>(data_dir: P, stage: &Stage) -> Result<()> {
@@ -188,16 +207,17 @@ async fn main() -> Result<()> {
     stage.uniswap_factory = e.checkpoint;
   }).await?;
 
-  for pair in stage.uniswap_pair.clone() {
+  for (name, pair) in stage.uniswap_pair.iter_mut() {
+    let contract = pair.contract.parse().unwrap();
     RunConfig {
       data_dir: data_dir.as_ref(),
-      start: pair.1,
-      end: pair.1+100_000,
+      start: pair.checkpoint.unwrap_or(pair.crated),
+      end: block_length,
       cut,
-      name: &format!("uniswap_pair_{}", pair.0),
-      executor: &|start, end| metrics::uniswap::fetch_uniswap_pair(&client, start, end, pair.0.parse().unwrap()),
+      name: &format!("uniswap_pair_{}", name),
+      executor: &|start, end| metrics::uniswap::fetch_uniswap_pair(&client, start, end, contract),
     }.run(|e: RunEvent| {
-      stage.uniswap_pair.insert(pair.0.clone(), e.checkpoint);
+      pair.checkpoint = Some(e.checkpoint);
     }).await?;
   }
 

@@ -28,7 +28,8 @@ pub mod consts {
     pub static ref TOPIC_Burn: H256 = "0xdccd412f0b1252819cb1fd330b93224ca42612892bb3f4f789976e6d81936496".parse().unwrap();
 
     pub static ref CONTRACT_UniswapV2Factory: Address = "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f".parse().unwrap();
-    pub static ref CONTRACT_UniswapV2_WETH_USDC: Address = "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc".parse().unwrap();
+    pub static ref CONTRACT_UniswapV2_USDC_WETH: Address = "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc".parse().unwrap();
+    pub static ref CONTRACT_UniswapV2_DAI_USDC: Address = "0xAE461cA67B15dc8dc81CE7615e0320dA1A9aB8D5".parse().unwrap();
   }
 }
 
@@ -171,8 +172,8 @@ pub struct Log_Pair {
   pub action: Pair_ActionType,
   pub sender: Option<Address>,
   pub to: Option<Address>,
-  pub value0_in: Option<u128>,
-  pub value0_out: Option<u128>,
+  pub value_in: Option<u128>,
+  pub value_out: Option<u128>,
   pub amount0_in: Option<u128>,
   pub amount1_in: Option<u128>,
   pub amount0_out: Option<u128>,
@@ -200,8 +201,8 @@ impl TryFrom<LogMetric> for Log_Pair {
       action,
       sender: None,
       to: None,
-      value0_in: None,
-      value0_out: None,
+      value_in: None,
+      value_out: None,
       amount0_in: None,
       amount1_in: None,
       amount0_out: None,
@@ -229,10 +230,10 @@ impl TryFrom<LogMetric> for Log_Pair {
         let from = log.topic1()?.as_address()?;
         let to = log.topic2()?.as_address()?;
         if from == Address::zero() {
-          result.value0_in = Some(log.get_arg(0)?.as_u128());
+          result.value_in = Some(log.get_arg(0)?.as_u128());
         }
         if to == Address::zero() {
-          result.value0_out = Some(log.get_arg(0)?.as_u128());
+          result.value_out = Some(log.get_arg(0)?.as_u128());
         }
       }
       // Mint (index_topic_1 address sender, uint256 amount0, uint256 amount1)
@@ -245,7 +246,7 @@ impl TryFrom<LogMetric> for Log_Pair {
       Pair_ActionType::Approval => {
         result.sender = Some(log.topic1()?.as_address()?);
         result.to = Some(log.topic2()?.as_address()?);
-        // result.value0_in = Some(log.get_arg(0)?.as_u128());
+        // result.value_in = Some(log.get_arg(0)?.as_u128());
       }
       // Burn (index_topic_1 address sender, uint256 amount0, uint256 amount1, index_topic_2 address to)
       Pair_ActionType::Burn => {
@@ -269,8 +270,8 @@ impl Log_Pair {
       Series::new("action", log_metrics.iter().map(|i| format!("{:?}", i.action)).collect::<Vec<_>>()),
       Series::new("sender", log_metrics.iter().map(|i| i.sender.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
       Series::new("to", log_metrics.iter().map(|i| i.to.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
-      Series::new("value0_in", log_metrics.iter().map(|i| i.value0_in.map(|x| x as f64)).collect::<Vec<_>>()),
-      Series::new("value0_out", log_metrics.iter().map(|i| i.value0_out.map(|x| x as f64)).collect::<Vec<_>>()),
+      Series::new("value_in", log_metrics.iter().map(|i| i.value_in.map(|x| x as f64)).collect::<Vec<_>>()),
+      Series::new("value_out", log_metrics.iter().map(|i| i.value_out.map(|x| x as f64)).collect::<Vec<_>>()),
       Series::new("amount0_in", log_metrics.iter().map(|i| i.amount0_in.map(|x| x as f64)).collect::<Vec<_>>()),
       Series::new("amount1_in", log_metrics.iter().map(|i| i.amount1_in.map(|x| x as f64)).collect::<Vec<_>>()),
       Series::new("amount0_out", log_metrics.iter().map(|i| i.amount0_out.map(|x| x as f64)).collect::<Vec<_>>()),
