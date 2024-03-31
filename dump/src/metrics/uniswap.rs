@@ -29,7 +29,6 @@ pub mod consts {
 
     pub static ref CONTRACT_UniswapV2Factory: Address = "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f".parse().unwrap();
     pub static ref CONTRACT_UniswapV2_USDC_WETH: Address = "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc".parse().unwrap();
-    pub static ref CONTRACT_UniswapV2_DAI_USDC: Address = "0xAE461cA67B15dc8dc81CE7615e0320dA1A9aB8D5".parse().unwrap();
   }
 }
 
@@ -143,7 +142,8 @@ pub async fn fetch_uniswap_factory<P: Middleware>(client: &P, height_from: u64, 
 where
   P::Error: 'static
 {
-  let logs = rpc::get_logs(client, Some(consts::TOPIC_PairCreated.clone()), None, height_from..height_to).await?;
+  const PAGE_SIZE: u64 = 10000;
+  let logs = rpc::get_logs(client, Some(consts::TOPIC_PairCreated.clone()), None, height_from..height_to, PAGE_SIZE).await?;
   debug!(logs.len=?logs.len(), height_from, height_to);
   let logs = logs.into_iter().map(LogMetric::from).filter_map(|i| Log_CreatePair::try_from(i).ok()).collect::<Vec<_>>();
   let df = Log_CreatePair::to_df(&logs)?;
@@ -287,7 +287,8 @@ pub async fn fetch_uniswap_pair<P: Middleware>(client: &P, height_from: u64, hei
 where
   P::Error: 'static
 {
-  let logs = rpc::get_logs(client, None, Some(pair), height_from..height_to).await?;
+  const PAGE_SIZE: u64 = 2000;
+  let logs = rpc::get_logs(client, None, Some(pair), height_from..height_to, PAGE_SIZE).await?;
   debug!(logs.len=?logs.len(), height_from, height_to);
   let logs = logs.into_iter().filter(|i| i.removed != Some(true)).map(LogMetric::from).filter_map(|i| Log_Pair::try_from(i).ok()).collect::<Vec<_>>();
   let df = Log_Pair::to_df(&logs)?;

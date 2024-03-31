@@ -3,7 +3,7 @@
 pub mod rpc;
 pub mod metrics;
 
-use std::{collections::HashMap, path::Path, str::FromStr as _};
+use std::{collections::HashMap, path::Path, str::FromStr as _, sync::{atomic::AtomicU64, Arc}};
 
 use anyhow::Result;
 use ethers_providers::{JsonRpcClient, Middleware, Provider};
@@ -22,7 +22,11 @@ async fn get_block_number<P: JsonRpcClient>(client: &Provider<P>) -> Result<u64>
 pub struct PairStage {
   pub contract: String,
   pub crated: u64,
-  pub checkpoint: Option<u64>,
+  #[serde(default, skip_serializing_if = "checkpoint_is_none")]
+  pub checkpoint: Arc<AtomicU64>,
+}
+fn checkpoint_is_none(data: &AtomicU64) -> bool {
+  data.load(std::sync::atomic::Ordering::SeqCst) == 0
 }
 
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
@@ -137,12 +141,7 @@ fn load_stage<P: AsRef<Path>>(data_dir: P) -> Result<Stage> {
   stage.uniswap_pair.entry("usdc_weth".to_string()).or_insert_with(|| PairStage {
     contract: metrics::uniswap::consts::CONTRACT_UniswapV2_USDC_WETH.to_checksum_hex(),
     crated: 10_000_000,
-    checkpoint: None,
-  });
-  stage.uniswap_pair.entry("dai_usdc".to_string()).or_insert_with(|| PairStage {
-    contract: metrics::uniswap::consts::CONTRACT_UniswapV2_DAI_USDC.to_checksum_hex(),
-    crated: 10_000_000,
-    checkpoint: None,
+    checkpoint: Arc::new(AtomicU64::new(0)),
   });
   // save_stage(data_dir.as_ref(), &stage).ok();
 
@@ -192,9 +191,9 @@ async fn main() -> Result<()> {
     if e.len > 0 {
       assert_eq!(e.len, e.checkpoint - e.start + e.start % cut);
     }
-    stage.block_metrics = e.checkpoint
+    stage.block_metrics = e.checkpoint;
+    save_stage(&data_dir, &stage).ok();
   }).await?;
-  // run(&client, &data_dir, stage.block_metrics, block_length+1, &mut stage).await?;
 
   RunConfig {
     data_dir: data_dir.as_ref(),
@@ -205,19 +204,24 @@ async fn main() -> Result<()> {
     executor: &|start, end| metrics::uniswap::fetch_uniswap_factory(&client, start, end),
   }.run(|e: RunEvent| {
     stage.uniswap_factory = e.checkpoint;
+    save_stage(&data_dir, &stage).ok();
   }).await?;
 
-  for (name, pair) in stage.uniswap_pair.iter_mut() {
+  for (name, pair) in &stage.uniswap_pair {
+    if checkpoint_is_none(&pair.checkpoint) {
+      pair.checkpoint.store(pair.crated / cut * cut, std::sync::atomic::Ordering::SeqCst);
+    }
     let contract = pair.contract.parse().unwrap();
     RunConfig {
       data_dir: data_dir.as_ref(),
-      start: pair.checkpoint.unwrap_or(pair.crated),
+      start: pair.checkpoint.load(std::sync::atomic::Ordering::SeqCst),
       end: block_length,
       cut,
       name: &format!("uniswap_pair_{}", name),
       executor: &|start, end| metrics::uniswap::fetch_uniswap_pair(&client, start, end, contract),
     }.run(|e: RunEvent| {
-      pair.checkpoint = Some(e.checkpoint);
+      pair.checkpoint.store(e.checkpoint, std::sync::atomic::Ordering::SeqCst);
+      save_stage(&data_dir, &stage).ok();
     }).await?;
   }
 

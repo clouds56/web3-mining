@@ -27,8 +27,8 @@ where <P as Middleware>::Error: 'static {
   Ok(result)
 }
 
-#[tracing::instrument(level = "debug", skip_all, fields(height_range=format!("{}..{}", height_range.start, height_range.end)))]
-pub async fn get_logs<P: Middleware>(client: P, topic: Option<H256>, address: Option<Address>, height_range: Range<u64>) -> Result<Vec<Log>>
+#[tracing::instrument(level = "debug", skip(client, height_range), fields(height_range=%format!("{}..{}", height_range.start, height_range.end)))]
+pub async fn get_logs<P: Middleware>(client: P, topic: Option<H256>, address: Option<Address>, height_range: Range<u64>, page_size: u64) -> Result<Vec<Log>>
 where <P as Middleware>::Error: 'static {
   if height_range.start >= height_range.end {
     return Ok(Vec::new());
@@ -43,16 +43,16 @@ where <P as Middleware>::Error: 'static {
     _ => filter,
   };
   info!(?filter);
-  const PAGE_SIZE: u64 = 10000;
+  // const PAGE_SIZE: u64 = 10000;
   let mut start = height_range.start;
   let end = height_range.end;
   let mut result = Vec::new();
   while start < end {
-    let to_block = std::cmp::min(start + PAGE_SIZE, end) - 1;
+    let to_block = std::cmp::min(start + page_size, end) - 1;
     trace!(start, to_block);
     let logs = client.get_logs(&filter.clone().from_block(start).to_block(to_block)).await?;
     result.extend(logs);
-    start += PAGE_SIZE;
+    start += page_size;
   }
   Ok(result)
 }
