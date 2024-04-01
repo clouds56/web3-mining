@@ -82,29 +82,29 @@ watch([data, selected_col], ([new_data, col]) => {
 
     <div class="flex flex-row flex-auto">
       <!--  left panel -->
-      <div class="flex flex-col basis-[200px] grow-0">
+      <div class="flex flex-col basis-[200px] min-w-20 max-w-[30%] max-h-[100%] grow">
         <ul class="flex flex-col basis-[100px] flex-auto select-none overflow-scroll">
           <li v-for="info in dataset_infos">
-            <label>
+            <label class="break-all">
               <input type="radio" :name="info.name" @click="select(info.name)" />
               <span class="ml-1">{{ info.name }}[{{ info.max }}]</span>
             </label>
           </li>
         </ul>
-        <form class="flex flex-col basis-[50px] flex-auto overflow-scroll">
-          <label v-for="col in data_key">
+        <form class="flex flex-col bg-gray-600 basis-[50px] flex-auto overflow-scroll">
+          <label class="break-all" v-for="col in data_key">
             <input
               type="radio"
               :name="col"
               @click="select_col(col)"
               :checked="col == selected_col"
             />
-            <pre class="ml-1 inline-block">{{ col }}</pre>
+            <span class="ml-1 font-mono">{{ col }}</span>
           </label>
         </form>
       </div>
       <!-- main panel -->
-      <div class="flex flex-row grow bg-gray-500">
+      <div class="flex flex-row max-w-[70%] max-h-[100%] grow bg-gray-500">
         <v-chart class="chart" :option="echart_data" autoresize />
       </div>
     </div>
