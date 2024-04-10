@@ -3,11 +3,12 @@
 pub mod rpc;
 pub mod metrics;
 
-use std::{collections::HashMap, path::Path, str::FromStr as _, sync::{atomic::AtomicU64, Arc}};
+use std::{path::Path, str::FromStr as _, sync::{atomic::AtomicU64, Arc}};
 
 use anyhow::Result;
 use ethers_providers::{JsonRpcClient, Middleware, Provider};
 use futures::Future;
+use indexmap::IndexMap;
 use polars::{frame::DataFrame, io::{parquet::{ParquetReader, ParquetWriter}, SerReader}};
 use tracing_subscriber::fmt::format::FmtSpan;
 
@@ -21,7 +22,8 @@ async fn get_block_number<P: JsonRpcClient>(client: &Provider<P>) -> Result<u64>
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PairStage {
   pub contract: String,
-  pub crated: u64,
+  #[serde(alias="crated")]
+  pub created: u64,
   #[serde(default, skip_serializing_if = "checkpoint_is_none")]
   pub checkpoint: Arc<AtomicU64>,
 }
@@ -37,7 +39,7 @@ pub struct Stage {
   #[serde(default)]
   uniswap_factory: u64,
   #[serde(default)]
-  uniswap_pair: HashMap<String, PairStage>,
+  uniswap_pair: IndexMap<String, PairStage>,
 }
 
 const DEFAULT_CUT: u64 = 1000000;
@@ -140,7 +142,7 @@ fn load_stage<P: AsRef<Path>>(data_dir: P) -> Result<Stage> {
 
   stage.uniswap_pair.entry("usdc_weth".to_string()).or_insert_with(|| PairStage {
     contract: metrics::uniswap::consts::CONTRACT_UniswapV2_USDC_WETH.to_checksum_hex(),
-    crated: 10_000_000,
+    created: 10_000_000,
     checkpoint: Arc::new(AtomicU64::new(0)),
   });
   // save_stage(data_dir.as_ref(), &stage).ok();
@@ -209,7 +211,7 @@ async fn main() -> Result<()> {
 
   for (name, pair) in &stage.uniswap_pair {
     if checkpoint_is_none(&pair.checkpoint) {
-      pair.checkpoint.store(pair.crated / cut * cut, std::sync::atomic::Ordering::SeqCst);
+      pair.checkpoint.store(pair.created / cut * cut, std::sync::atomic::Ordering::SeqCst);
     }
     let contract = pair.contract.parse().unwrap();
     RunConfig {
