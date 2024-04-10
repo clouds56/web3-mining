@@ -2,6 +2,7 @@
 
 pub mod rpc;
 pub mod metrics;
+pub mod migration;
 
 use std::{path::Path, str::FromStr as _, sync::{atomic::AtomicU64, Arc}};
 
@@ -9,6 +10,7 @@ use anyhow::Result;
 use ethers_providers::{JsonRpcClient, Middleware, Provider};
 use futures::Future;
 use indexmap::IndexMap;
+use migration::StageMigration;
 use polars::{frame::DataFrame, io::{parquet::{ParquetReader, ParquetWriter}, SerReader}};
 use tracing_subscriber::fmt::format::FmtSpan;
 
@@ -37,9 +39,9 @@ pub struct Stage {
   #[serde(default)]
   block_metrics: u64,
   #[serde(default)]
-  uniswap_factory: u64,
+  uniswap_factory_events: u64,
   #[serde(default)]
-  uniswap_pair: IndexMap<String, PairStage>,
+  uniswap_pair_events: IndexMap<String, PairStage>,
 }
 
 const DEFAULT_CUT: u64 = 1000000;
@@ -70,6 +72,44 @@ impl<F: FnMut(E), E> EventListener<E> for F {
   fn on_event(&mut self, event: E) -> bool {
     self(event);
     true
+  }
+}
+
+pub struct DatasetName<'a> {
+  name: &'a str,
+  cut: u64,
+  idx: usize,
+}
+
+impl<'a> DatasetName<'a> {
+  pub fn new(name: &'a str, cut: u64, idx: usize) -> Self {
+    Self { name, cut, idx }
+  }
+  pub fn filename(&self) -> String {
+    format!("{}_{}.{}.parquet", self.name, self.cut, self.idx)
+  }
+  pub fn tmp_filename(&self) -> String {
+    format!("{}.tmp", self.filename())
+  }
+  pub fn part_filename(&self) -> String {
+    format!("{}.part", self.filename())
+  }
+  pub fn from_string(name: &'a str) -> Option<(Self, &'a str)> {
+    let (name, rest) = if let Some(name) = name.strip_suffix(".tmp") {
+      (name, ".tmp")
+    } else if let Some(name) = name.strip_suffix(".part") {
+      (name, ".part")
+    } else {
+      (name, "")
+    };
+    let name = name.strip_suffix(".parquet")?;
+    let mut split = name.rsplitn(2, '.');
+    let idx = split.next()?.parse().ok()?;
+    let mut split = split.next()?.rsplitn(2, '_');
+    let cut = split.next()?.parse().ok()?;
+    let name = split.next()?;
+    assert_eq!(split.next(), None);
+    Some((Self { name, cut, idx }, rest))
   }
 }
 
@@ -132,7 +172,11 @@ impl<'a, Fn: Executor> RunConfig<'a, Fn> {
 fn load_stage<P: AsRef<Path>>(data_dir: P) -> Result<Stage> {
   let filename = data_dir.as_ref().join("stage.toml");
   let mut stage: Stage = match std::fs::read_to_string(&filename) {
-    Ok(content) => toml::from_str(&content)?,
+    Ok(content) => {
+      let stage = toml::from_str::<Stage>(&content)?;
+      let migration = toml::from_str::<StageMigration>(&content)?;
+      migration::migrate(data_dir.as_ref(), stage, migration)?
+    }
     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
       info!(stage_file=%filename.display(), "stage file not found, using default");
       Stage::default()
@@ -140,7 +184,7 @@ fn load_stage<P: AsRef<Path>>(data_dir: P) -> Result<Stage> {
     Err(e) => return Err(e)?,
   };
 
-  stage.uniswap_pair.entry("usdc_weth".to_string()).or_insert_with(|| PairStage {
+  stage.uniswap_pair_events.entry("usdc_weth".to_string()).or_insert_with(|| PairStage {
     contract: metrics::uniswap::consts::CONTRACT_UniswapV2_USDC_WETH.to_checksum_hex(),
     created: 10_000_000,
     checkpoint: Arc::new(AtomicU64::new(0)),
@@ -199,17 +243,17 @@ async fn main() -> Result<()> {
 
   RunConfig {
     data_dir: data_dir.as_ref(),
-    start: stage.uniswap_factory.max(9_000_000),
+    start: stage.uniswap_factory_events.max(9_000_000),
     end: block_length,
     cut,
-    name: "uniswap_factory",
+    name: "uniswap_factory_events",
     executor: &|start, end| metrics::uniswap::fetch_uniswap_factory(&client, start, end),
   }.run(|e: RunEvent| {
-    stage.uniswap_factory = e.checkpoint;
+    stage.uniswap_factory_events = e.checkpoint;
     save_stage(&data_dir, &stage).ok();
   }).await?;
 
-  for (name, pair) in &stage.uniswap_pair {
+  for (name, pair) in &stage.uniswap_pair_events {
     if checkpoint_is_none(&pair.checkpoint) {
       pair.checkpoint.store(pair.created / cut * cut, std::sync::atomic::Ordering::SeqCst);
     }
@@ -219,7 +263,7 @@ async fn main() -> Result<()> {
       start: pair.checkpoint.load(std::sync::atomic::Ordering::SeqCst),
       end: block_length,
       cut,
-      name: &format!("uniswap_pair_{}", name),
+      name: &format!("uniswap_pair_events_{}", name),
       executor: &|start, end| metrics::uniswap::fetch_uniswap_pair(&client, start, end, contract),
     }.run(|e: RunEvent| {
       pair.checkpoint.store(e.checkpoint, std::sync::atomic::Ordering::SeqCst);
