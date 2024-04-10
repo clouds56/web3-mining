@@ -5,7 +5,7 @@
 
 use std::{collections::BTreeMap, fmt::Display, path::PathBuf};
 
-use polars::{chunked_array::ops::SortOptions, frame::DataFrame, lazy::frame::{IntoLazy, LazyFrame}, sql::sql_expr};
+use polars::{chunked_array::ops::SortOptions, frame::DataFrame, lazy::frame::{IntoLazy, LazyFrame}};
 use tauri::State;
 use tracing_subscriber::fmt::format::FmtSpan;
 
@@ -112,27 +112,16 @@ async fn get_data(config: State<'_, Config>, name: String) -> Result<Data> {
   }
   let df = df.unwrap().lazy();
   info!(df=%df.clone().limit(10).collect()?.head(None));
-  // let select_exprs = [
-  //   []
-  // ];
+  let expr_jsonl = include_str!("../exprs/bm.jsonl");
+  let exprs = expr_jsonl
+    .lines().filter(|i| !i.trim().is_empty())
+    .map(|i| serde_json::from_str(i))
+    .collect::<Result<Vec<_>, _>>()?;
+  info!(?exprs);
   let df = df
     .filter(col("timestamp").gt(lit(0)))
     .with_column(col("timestamp").mul(lit(1000)).cast(DataType::Datetime(TimeUnit::Milliseconds, None)).cast(DataType::Date).alias("_date"))
-    .group_by([col("_date")]).agg([
-      // https://github.com/pola-rs/polars/blob/cd1994b63e32191640cca80da4fd420af0650378/crates/polars-sql/src/sql_expr.rs#L935
-      // sql_expr("sum(total_eth)")?.alias("total_eth"),
-      col("total_eth").sum().alias("total_eth_old"),
-      // sql_expr("sum(tx_count as u64)")?.alias("tx_count"),
-      col("tx_count").cast(DataType::UInt64).sum().alias("tx_cound_old"),
-      // sql_expr("mean(total_fee)")?.alias("total_fee"),
-      col("total_fee").mean().alias("total_fee_old"),
-      // sql_expr("mean(gas_used)")?.alias("gas_used"),
-      col("gas_used").mean().alias("gas_used_old"),
-      // sql_expr("mean(fee_per_gas)")?.alias("fee_per_gas:mean"),
-      col("fee_per_gas").mean().alias("fee_per_gas_old:mean"),
-      // sql_expr("median(fee_per_gas)")?.alias("fee_per_gas:median"),
-      col("fee_per_gas").median().alias("fee_per_gas_old:median"),
-    ]);
+    .group_by([col("_date")]).agg(exprs);
   info!(agg=%df.clone().limit(10).collect()?.head(None));
   let df = df
     .with_column(col("_date").cast(DataType::Datetime(TimeUnit::Milliseconds, None)))

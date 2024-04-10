@@ -4,6 +4,8 @@ import polars as pl
 from pathlib import Path
 while not os.path.exists("Cargo.toml"):
   os.chdir("../")
+FOLDER_EXPRS = "tauri-app/src-tauri/exprs"
+os.makedirs(FOLDER_EXPRS, exist_ok=True)
 
 def load_files(files) -> pl.DataFrame:
   if isinstance(files, str):
@@ -49,6 +51,20 @@ df_clean = df.group_by('height').agg(
   pl.col('value0_in').cum_sum().alias('value0'),
 )
 df_clean.write_parquet("uniswap_pair_0x0.parquet")
+
+# %%
+exprs = [
+  pl.col("total_eth").sum().alias("total_eth"),
+  pl.col("tx_count").cast(pl.UInt64).sum().alias("tx_count"),
+  pl.col("total_fee").mean().alias("total_fee"),
+  pl.col("gas_used").mean().alias("gas_used"),
+  pl.col("fee_per_gas").mean().alias("fee_per_gas:mean"),
+  pl.col("fee_per_gas").median().alias("fee_per_gas:median"),
+]
+expr_lines = [x.meta.serialize() for x in exprs]
+with open(f"{FOLDER_EXPRS}/bm.jsonl", "w") as f:
+  for i in expr_lines:
+    print(i, file=f)
 
 # %%
 import matplotlib.pyplot as plt
