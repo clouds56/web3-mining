@@ -7,8 +7,6 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 while not os.path.exists("Cargo.toml"):
   os.chdir("../")
-FOLDER_EXPRS = "tauri-app/src-tauri/exprs"
-os.makedirs(FOLDER_EXPRS, exist_ok=True)
 
 def load_files(files) -> pl.DataFrame:
   if isinstance(files, str):
@@ -98,29 +96,5 @@ for pair in pairs:
   plt.plot(df_acc['height'], (df_acc['reserve0']*df_acc['reserve1']).sqrt()/df_acc['value'], label=pair)
 plt.legend()
 plt.show()
-
-# %%
-def save_jsonl(filename, exprs: List[pl.Expr]):
-  expr_lines = [x.meta.serialize() for x in exprs]
-  with open(f"{FOLDER_EXPRS}/{filename}", "w") as f:
-    for i in expr_lines:
-      print(i, file=f)
-save_jsonl("bm.jsonl", [
-  pl.col("total_eth").sum().alias("total_eth"),
-  pl.col("tx_count").cast(pl.UInt64).sum().alias("tx_count"),
-  pl.col("total_fee").mean().alias("total_fee"),
-  pl.col("gas_used").mean().alias("gas_used"),
-  pl.col("fee_per_gas").mean().alias("fee_per_gas:mean"),
-  pl.col("fee_per_gas").median().alias("fee_per_gas:median"),
-])
-save_jsonl("upair.jsonl", [
-  pl.sum("value_in"),
-  pl.sum("amount0_in"),
-  pl.sum("amount1_in"),
-  pl.last("reserve0"),
-  pl.last("reserve1"),
-  pl.last("value"),
-  ((pl.col('reserve0') * pl.col("reserve1")).sqrt() / pl.col("value")).last().alias("scale"),
-])
 
 # %%

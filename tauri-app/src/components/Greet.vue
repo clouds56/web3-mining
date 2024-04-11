@@ -16,13 +16,6 @@ const data = shallowRef<Data | null>(null)
 const selected_col = shallowRef<string>("")
 const data_key = computed(() => Object.keys(data.value?.data ?? {}))
 
-const select = (n: string) => {
-  name.value = n
-}
-const select_col = (n: string) => {
-  selected_col.value = n
-}
-
 const greet = async () => {
   // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
   dataset_infos.value = await invoke("list_data_names")
@@ -86,19 +79,14 @@ watch([data, selected_col], ([new_data, col]) => {
         <ul class="flex flex-col basis-[100px] flex-auto select-none overflow-scroll">
           <li v-for="info in dataset_infos">
             <label class="break-all">
-              <input type="radio" :name="info.name" @click="select(info.name)" />
+              <input type="radio" :name="info.name" :value="info.name" v-model="name" />
               <span class="ml-1">{{ info.name }}[{{ info.max }}]</span>
             </label>
           </li>
         </ul>
         <form class="flex flex-col bg-gray-600 basis-[50px] flex-auto overflow-scroll">
           <label class="break-all" v-for="col in data_key">
-            <input
-              type="radio"
-              :name="col"
-              @click="select_col(col)"
-              :checked="col == selected_col"
-            />
+            <input type="radio" :name="col" :value="col" v-model="selected_col" />
             <span class="ml-1 font-mono">{{ col }}</span>
           </label>
         </form>
