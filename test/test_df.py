@@ -81,7 +81,7 @@ pairs
 # %%
 for pair in pairs:
   df = load_datasets("uniswap_pair_events_" + pair)
-  df.group_by("action").count().sort("count", descending=True)
+  print(df.group_by("action").len().sort("len", descending=True))
 
   df_acc = df.group_by('height').agg(
     (pl.col('value_in').fill_null(0) - pl.col('value_out').fill_null(0)).sum(),
@@ -92,7 +92,7 @@ for pair in pairs:
   ).sort('height').with_columns(
     pl.col('value_in').cum_sum().alias('value'),
   )
-  df_acc.write_parquet(f"uniswap_pair_block_{pair}.parquet")
+  df_acc.write_parquet(f"data/uniswap_pair_block_{pair}.parquet")
 
   # plt.plot(df_acc['height'], df_acc['value0'])
   plt.plot(df_acc['height'], (df_acc['reserve0']*df_acc['reserve1']).sqrt()/df_acc['value'], label=pair)

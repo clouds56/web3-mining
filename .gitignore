@@ -11,4 +11,5 @@
 /db
 
 *.parquet
+*.zip
 stage.toml
