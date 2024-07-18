@@ -6,6 +6,7 @@ Contracts
 | Uniswap V2: Factory | `0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f` | [10_000_835](https://etherscan.io/tx/0xc31d7e7e85cab1d38ce1b8ac17e821ccd47dbde00f9d57f2bd8613bff9428396) |
 | Uniswap V2: USDC | `0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc` | [10_008_355](https://etherscan.io/tx/0xd07cbde817318492092cc7a27b3064a69bd893c01cb593d6029683ffd290ab3a) |
 | Uniswap V2: DAI-USDC | `0xAE461cA67B15dc8dc81CE7615e0320dA1A9aB8D5` | [10_060_832](https://etherscan.io/tx/0x966e4e9acaac28e44aafc937918718bc66804a3c94ac656e5e57faedd314c947)
+| Uniswap V3: Factory | `0x1F98431c8aD98523631AE4a59f267346ea31F984` | [12_369_621](https://etherscan.io/tx/0x1e20cd6d47d7021ae7e437792823517eeadd835df09dde17ab45afd7a5df4603) |
 | Uniswap V3: WBTC/WETH | `0xCBCdF9626bC03E24f779434178A73a0B4bad62eD` | [12_369_821](https://etherscan.io/tx/0xf87d91f3d72a8e912c020c2e316151f3557b1217b44d4f6b6bec126448318530)
 
 
