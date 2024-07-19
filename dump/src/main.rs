@@ -41,6 +41,8 @@ pub struct Stage {
   #[serde(default)]
   uniswap_factory_events: u64,
   #[serde(default)]
+  uniswap3_factory_events: u64,
+  #[serde(default)]
   uniswap_pair_events: IndexMap<String, PairStage>,
   #[serde(default)]
   uniswap3_pair_events: IndexMap<String, PairStage>,
@@ -257,13 +259,13 @@ async fn main() -> Result<()> {
 
   RunConfig {
     data_dir: data_dir.as_ref(),
-    start: stage.uniswap_factory_events.max(11_000_000),
+    start: stage.uniswap3_factory_events.max(11_000_000),
     end: block_length,
     cut,
     name: "uniswap3_factory_events",
     executor: &|start, end| metrics::uniswap_v3::fetch_factory(&client, start, end),
   }.run(|e: RunEvent| {
-    stage.uniswap_factory_events = e.checkpoint;
+    stage.uniswap3_factory_events = e.checkpoint;
     save_stage(&data_dir, &stage).ok();
   }).await?;
 

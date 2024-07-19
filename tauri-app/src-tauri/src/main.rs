@@ -5,7 +5,7 @@
 
 use std::{collections::{BTreeMap, HashMap}, fmt::Display, path::PathBuf, sync::{Arc, Mutex}};
 
-use polars::{chunked_array::ops::SortOptions, frame::DataFrame, lazy::frame::{IntoLazy, LazyFrame}};
+use polars::{frame::DataFrame, lazy::frame::{IntoLazy, LazyFrame}, prelude::SortMultipleOptions};
 use polars_plan::dsl::Expr;
 use tauri::State;
 use tracing_subscriber::fmt::format::FmtSpan;
@@ -223,7 +223,7 @@ async fn get_data(config: State<'_, Config>, name: String) -> Result<Data> {
   info!(agg=%df.clone().limit(10).collect()?.head(None));
   let df = df
     .with_column(col("_date").cast(DataType::Datetime(TimeUnit::Milliseconds, None)))
-    .sort("_date", SortOptions::default())
+    .sort(["_date"], SortMultipleOptions::default())
     .collect()?;
   let mut result = BTreeMap::new();
   for i in df.get_columns() {
