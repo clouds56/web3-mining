@@ -3,6 +3,7 @@ use ethers_core::types::{Address, H256, U256};
 pub mod block;
 pub mod event;
 pub mod uniswap_v2;
+pub mod uniswap_v3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Value(pub H256);
@@ -16,6 +17,10 @@ impl Value {
 
   pub fn as_u256(&self) -> U256 {
     U256::from_big_endian(self.0.as_bytes())
+  }
+
+  pub fn as_u32(&self) -> u32 {
+    self.as_u256().as_u32()
   }
 
   pub fn as_u64(&self) -> u64 {
