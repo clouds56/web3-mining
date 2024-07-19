@@ -11,7 +11,7 @@ use ethers_providers::{JsonRpcClient, Middleware, Provider};
 use futures::Future;
 use indexmap::IndexMap;
 use migration::StageMigration;
-use polars::{frame::DataFrame, io::{parquet::{ParquetReader, ParquetWriter}, SerReader}};
+use polars::{frame::DataFrame, prelude::{ParquetReader, ParquetWriter}, io::SerReader};
 use tracing_subscriber::fmt::format::FmtSpan;
 
 use crate::metrics::ToChecksumHex;
@@ -42,6 +42,8 @@ pub struct Stage {
   uniswap_factory_events: u64,
   #[serde(default)]
   uniswap_pair_events: IndexMap<String, PairStage>,
+  #[serde(default)]
+  uniswap3_pair_events: IndexMap<String, PairStage>,
 }
 
 const DEFAULT_CUT: u64 = 1000000;
@@ -248,6 +250,18 @@ async fn main() -> Result<()> {
     cut,
     name: "uniswap_factory_events",
     executor: &|start, end| metrics::uniswap_v2::fetch_uniswap_factory(&client, start, end),
+  }.run(|e: RunEvent| {
+    stage.uniswap_factory_events = e.checkpoint;
+    save_stage(&data_dir, &stage).ok();
+  }).await?;
+
+  RunConfig {
+    data_dir: data_dir.as_ref(),
+    start: stage.uniswap_factory_events.max(11_000_000),
+    end: block_length,
+    cut,
+    name: "uniswap3_factory_events",
+    executor: &|start, end| metrics::uniswap_v3::fetch_factory(&client, start, end),
   }.run(|e: RunEvent| {
     stage.uniswap_factory_events = e.checkpoint;
     save_stage(&data_dir, &stage).ok();
