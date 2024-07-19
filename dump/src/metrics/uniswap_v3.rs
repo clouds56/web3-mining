@@ -106,9 +106,7 @@ pub enum Pair_ActionType {
   Flash,
   Collect,
   Swap,
-  Transfer,
   Mint,
-  Approval,
   Burn,
 }
 
@@ -120,18 +118,16 @@ pub struct Log_Pair {
   pub tx_hash: String,
   pub topic0: H256,
   pub action: Pair_ActionType,
-  pub tick_lower: u32,
-  pub tick_upper: u32,
   pub sender: Option<Address>,
   pub to: Option<Address>,
-  pub value_in: Option<u128>,
-  pub value_out: Option<u128>,
-  pub amount0_in: Option<u128>,
-  pub amount1_in: Option<u128>,
-  pub amount0_out: Option<u128>,
-  pub amount1_out: Option<u128>,
-  pub reserve0: Option<u128>,
-  pub reserve1: Option<u128>,
+  pub tick_lower: Option<i32>,
+  pub tick_upper: Option<i32>,
+  pub value: Option<i128>,
+  pub amount0: Option<i128>,
+  pub amount1: Option<i128>,
+  pub fee0: Option<i128>,
+  pub fee1: Option<i128>,
+  pub price: Option<f64>,
 }
 
 impl TryFrom<LogMetric> for Log_Pair {
@@ -141,9 +137,7 @@ impl TryFrom<LogMetric> for Log_Pair {
     else if log.topic0 == *consts::TOPIC_Flash { Pair_ActionType::Flash }
     else if log.topic0 == *consts::TOPIC_Initialize { Pair_ActionType::Initialize }
     else if log.topic0 == *consts::TOPIC_Swap { Pair_ActionType::Swap }
-    else if log.topic0 == *consts::TOPIC_Transfer { Pair_ActionType::Transfer }
     else if log.topic0 == *consts::TOPIC_Mint { Pair_ActionType::Mint }
-    else if log.topic0 == *consts::TOPIC_Approval { Pair_ActionType::Approval }
     else if log.topic0 == *consts::TOPIC_Burn { Pair_ActionType::Burn }
     else { bail!("unknown action type") };
     let mut result = Log_Pair {
@@ -152,87 +146,67 @@ impl TryFrom<LogMetric> for Log_Pair {
       contract: log.contract,
       tx_hash: log.tx_hash.clone(),
       topic0: log.topic0,
-      tick_lower: 0,
-      tick_upper: 0,
       action,
       sender: None,
       to: None,
-      value_in: None,
-      value_out: None,
-      amount0_in: None,
-      amount1_in: None,
-      amount0_out: None,
-      amount1_out: None,
-      reserve0: None,
-      reserve1: None,
+      tick_lower: None,
+      tick_upper: None,
+      value: None,
+      amount0: None,
+      amount1: None,
+      fee0: None,
+      fee1: None,
+      price: None,
     };
     match action {
       // Initialize (uint160 sqrtPriceX96, int24 tick)
       Pair_ActionType::Initialize => {
-        result.tick_lower = log.get_arg(1)?.as_u32();
+        result.price = Some(log.get_arg(0)?.as_x::<96>());
+        result.tick_lower = Some(log.get_arg(1)?.as_i32());
       }
       // Flash (index_topic_1 address sender, index_topic_2 address recipient, uint256 amount0, uint256 amount1, uint256 paid0, uint256 paid1)
       Pair_ActionType::Flash => {
         result.sender = Some(log.topic1()?.as_address()?);
         result.to = Some(log.topic2()?.as_address()?);
-        result.amount0_in = Some(log.get_arg(0)?.as_u128());
-        result.amount1_in = Some(log.get_arg(1)?.as_u128());
-        result.amount0_out = Some(log.get_arg(2)?.as_u128());
-        result.amount1_out = Some(log.get_arg(3)?.as_u128());
+        result.fee0 = Some(log.get_arg(2)?.as_i128());
+        result.fee1 = Some(log.get_arg(3)?.as_i128());
       }
       // Collect (index_topic_1 address owner, address recipient, index_topic_2 int24 tickLower, index_topic_3 int24 tickUpper, uint128 amount0, uint128 amount1)
       Pair_ActionType::Collect => {
         result.sender = Some(log.topic1()?.as_address()?);
         result.to = Some(log.get_arg(0)?.as_address()?);
-        result.tick_lower = log.topic2()?.as_u32();
-        result.tick_upper = log.topic3()?.as_u32();
-        result.amount0_in = Some(log.get_arg(1)?.as_u128());
-        result.amount1_in = Some(log.get_arg(2)?.as_u128());
+        result.tick_lower = Some(log.topic2()?.as_i32());
+        result.tick_upper = Some(log.topic3()?.as_i32());
+        result.fee0 = Some(-log.get_arg(1)?.as_i128());
+        result.fee1 = Some(-log.get_arg(2)?.as_i128());
       }
-      // Swap (index_topic_1 address sender, uint256 amount0In, uint256 amount1In, uint256 amount0Out, uint256 amount1Out, index_topic_2 address to)
+      // Swap (index_topic_1 address sender, index_topic_2 address recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)
       Pair_ActionType::Swap => {
         result.sender = Some(log.topic1()?.as_address()?);
-        result.amount0_in = Some(log.get_arg(0)?.as_u128());
-        result.amount1_in = Some(log.get_arg(1)?.as_u128());
-        result.amount0_out = Some(log.get_arg(2)?.as_u128());
-        result.amount1_out = Some(log.get_arg(3)?.as_u128());
         result.to = Some(log.topic2()?.as_address()?);
-      }
-      // Transfer (index_topic_1 address from, index_topic_2 address to, uint256 value)
-      Pair_ActionType::Transfer => {
-        result.sender = Some(log.topic1()?.as_address()?);
-        result.to = Some(log.topic2()?.as_address()?);
-        // if from == Address::zero() {
-        //   result.value_in = Some(log.get_arg(0)?.as_u128());
-        // }
-        // if to == Address::zero() {
-        //   result.value_out = Some(log.get_arg(0)?.as_u128());
-        // }
+        result.amount0 = Some(log.get_arg(0)?.as_i128());
+        result.amount1 = Some(log.get_arg(1)?.as_i128());
+        result.price = Some(log.get_arg(2)?.as_x::<96>());
+        result.tick_lower = Some(log.get_arg(4)?.as_i32());
       }
       // Mint (address sender, index_topic_1 address owner, index_topic_2 int24 tickLower, index_topic_3 int24 tickUpper, uint128 amount, uint256 amount0, uint256 amount1)
       Pair_ActionType::Mint => {
         result.sender = Some(log.get_arg(0)?.as_address()?);
         result.to = Some(log.topic1()?.as_address()?);
-        result.tick_lower = log.topic2()?.as_u32();
-        result.tick_upper = log.topic3()?.as_u32();
-        result.value_in = Some(log.get_arg(0)?.as_u128());
-        result.amount0_in = Some(log.get_arg(2)?.as_u128());
-        result.amount1_in = Some(log.get_arg(3)?.as_u128());
-      }
-      // Approval (index_topic_1 address owner, index_topic_2 address spender, uint256 value)
-      Pair_ActionType::Approval => {
-        result.sender = Some(log.topic1()?.as_address()?);
-        result.to = Some(log.topic2()?.as_address()?);
-        // result.value_in = Some(log.get_arg(0)?.as_u128());
+        result.tick_lower = Some(log.topic2()?.as_i32());
+        result.tick_upper = Some(log.topic3()?.as_i32());
+        result.value = Some(log.get_arg(1)?.as_i128());
+        result.amount0 = Some(log.get_arg(2)?.as_i128());
+        result.amount1 = Some(log.get_arg(3)?.as_i128());
       }
       // Burn (index_topic_1 address owner, index_topic_2 int24 tickLower, index_topic_3 int24 tickUpper, uint128 amount, uint256 amount0, uint256 amount1)
       Pair_ActionType::Burn => {
         result.sender = Some(log.topic1()?.as_address()?);
-        result.tick_lower = log.topic2()?.as_u32();
-        result.tick_upper = log.topic3()?.as_u32();
-        result.value_out = Some(log.get_arg(0)?.as_u128());
-        result.amount0_out = Some(log.get_arg(1)?.as_u128());
-        result.amount1_out = Some(log.get_arg(2)?.as_u128());
+        result.tick_lower = Some(log.topic2()?.as_i32());
+        result.tick_upper = Some(log.topic3()?.as_i32());
+        result.value = Some(-log.get_arg(0)?.as_i128());
+        result.amount0 = Some(-log.get_arg(1)?.as_i128());
+        result.amount1 = Some(-log.get_arg(2)?.as_i128());
       }
     }
     Ok(result)
@@ -249,14 +223,14 @@ impl Log_Pair {
       Series::new("action", log_metrics.iter().map(|i| format!("{:?}", i.action)).collect::<Vec<_>>()),
       Series::new("sender", log_metrics.iter().map(|i| i.sender.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
       Series::new("to", log_metrics.iter().map(|i| i.to.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
-      Series::new("value_in", log_metrics.iter().map(|i| i.value_in.map(|x| x as f64)).collect::<Vec<_>>()),
-      Series::new("value_out", log_metrics.iter().map(|i| i.value_out.map(|x| x as f64)).collect::<Vec<_>>()),
-      Series::new("amount0_in", log_metrics.iter().map(|i| i.amount0_in.map(|x| x as f64)).collect::<Vec<_>>()),
-      Series::new("amount1_in", log_metrics.iter().map(|i| i.amount1_in.map(|x| x as f64)).collect::<Vec<_>>()),
-      Series::new("amount0_out", log_metrics.iter().map(|i| i.amount0_out.map(|x| x as f64)).collect::<Vec<_>>()),
-      Series::new("amount1_out", log_metrics.iter().map(|i| i.amount1_out.map(|x| x as f64)).collect::<Vec<_>>()),
-      Series::new("reserve0", log_metrics.iter().map(|i| i.reserve0.map(|x| x as f64)).collect::<Vec<_>>()),
-      Series::new("reserve1", log_metrics.iter().map(|i| i.reserve1.map(|x| x as f64)).collect::<Vec<_>>()),
+      Series::new("tick_lower", log_metrics.iter().map(|i| i.tick_lower).collect::<Vec<_>>()),
+      Series::new("tick_upper", log_metrics.iter().map(|i| i.tick_upper).collect::<Vec<_>>()),
+      Series::new("value", log_metrics.iter().map(|i| i.value.map(|x| x as f64)).collect::<Vec<_>>()),
+      Series::new("amount0", log_metrics.iter().map(|i| i.amount0.map(|x| x as f64)).collect::<Vec<_>>()),
+      Series::new("amount1", log_metrics.iter().map(|i| i.amount1.map(|x| x as f64)).collect::<Vec<_>>()),
+      Series::new("fee0", log_metrics.iter().map(|i| i.fee0.map(|x| x as f64)).collect::<Vec<_>>()),
+      Series::new("fee1", log_metrics.iter().map(|i| i.fee1.map(|x| x as f64)).collect::<Vec<_>>()),
+      Series::new("price", log_metrics.iter().map(|i| i.price).collect::<Vec<_>>()),
     ])?;
     Ok(df)
   }

@@ -193,6 +193,11 @@ fn load_stage<P: AsRef<Path>>(data_dir: P) -> Result<Stage> {
     created: 10_000_000,
     checkpoint: Arc::new(AtomicU64::new(0)),
   });
+  stage.uniswap3_pair_events.entry("wbtc_weth".to_string()).or_insert_with(|| PairStage {
+    contract: metrics::uniswap_v3::consts::CONTRACT_UniswapV3_WBTC_WETH.to_checksum_hex(),
+    created: 12_000_000,
+    checkpoint: Arc::new(AtomicU64::new(0)),
+  });
   // save_stage(data_dir.as_ref(), &stage).ok();
 
   Ok(stage)
@@ -281,6 +286,24 @@ async fn main() -> Result<()> {
       cut,
       name: &format!("uniswap_pair_events_{}", name),
       executor: &|start, end| metrics::uniswap_v2::fetch_uniswap_pair(&client, start, end, contract),
+    }.run(|e: RunEvent| {
+      pair.checkpoint.store(e.checkpoint, std::sync::atomic::Ordering::SeqCst);
+      save_stage(&data_dir, &stage).ok();
+    }).await?;
+  }
+
+  for (name, pair) in &stage.uniswap3_pair_events {
+    if checkpoint_is_none(&pair.checkpoint) {
+      pair.checkpoint.store(pair.created / cut * cut, std::sync::atomic::Ordering::SeqCst);
+    }
+    let contract = pair.contract.parse().unwrap();
+    RunConfig {
+      data_dir: data_dir.as_ref(),
+      start: pair.checkpoint.load(std::sync::atomic::Ordering::SeqCst),
+      end: block_length,
+      cut,
+      name: &format!("uniswap3_pair_events_{}", name),
+      executor: &|start, end| metrics::uniswap_v3::fetch_uniswap_pair(&client, start, end, contract),
     }.run(|e: RunEvent| {
       pair.checkpoint.store(e.checkpoint, std::sync::atomic::Ordering::SeqCst);
       save_stage(&data_dir, &stage).ok();

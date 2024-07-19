@@ -30,6 +30,34 @@ impl Value {
   pub fn as_u128(&self) -> u128 {
     self.as_u256().as_u128()
   }
+
+  pub fn as_i128(&self) -> i128 {
+    let val = self.as_u256();
+    let head = (val.0[3] as u128) << 64 | val.0[2] as u128;
+    if head != 0 && head != u128::MAX { error!("head = {head}, val = {val}, val: {:x?}", val.0) }
+    assert!(head == 0 || head == u128::MAX);
+    self.as_u256().low_u128() as i128
+  }
+
+  pub fn as_i32(&self) -> i32 {
+    self.as_i128() as i32
+  }
+
+  pub fn as_i64(&self) -> i64 {
+    self.as_i128() as i64
+  }
+
+  pub fn as_f64(&self) -> f64 {
+    let mut result = 0f64;
+    for &i in self.as_u256().0.iter().rev() {
+      result = result * 2f64.powi(64) + i as f64;
+    }
+    result
+  }
+
+  pub fn as_x<const N: usize>(&self) -> f64 {
+    self.as_f64() * 2f64.powi(-(N as i32))
+  }
 }
 
 pub trait ToHex {

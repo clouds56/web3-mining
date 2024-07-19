@@ -5,3 +5,7 @@ resolver = "2"
 # https://github.com/rust-lang/cc-rs/issues/948
 # https://github.com/ziglang/zig/issues/4911
 #cargo zigbuild -p dump --release --target x86_64-unknown-linux-musl
+
+[profile.release-lto]
+inherits = "release"
+lto = true
