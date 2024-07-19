@@ -1,6 +1,7 @@
 use ethers_core::types::{Address, H256, U256};
 
 pub mod block;
+pub mod event;
 pub mod uniswap_v2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
