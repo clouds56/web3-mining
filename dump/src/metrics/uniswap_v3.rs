@@ -20,7 +20,7 @@ pub mod consts {
     /// Flash (index_topic_1 address sender, index_topic_2 address recipient, uint256 amount0, uint256 amount1, uint256 paid0, uint256 paid1)
     pub static ref TOPIC_Flash: H256 = "0xbdbdb71d7860376ba52b25a5028beea23581364a40522f6bcfb86bb1f2dca633".parse().unwrap();
     /// Collect (index_topic_1 address owner, address recipient, index_topic_2 int24 tickLower, index_topic_3 int24 tickUpper, uint128 amount0, uint128 amount1)
-    pub static ref TOPIC_Collect: H256 = "0x40d0efd1a53d60ecbf40971b9daf7dc90178c3aadc7aab1765632738fa8b8f01".parse().unwrap();
+    pub static ref TOPIC_Collect: H256 = "0x70935338e69775456a85ddef226c395fb668b63fa0115f5f20610b388e6ca9c0".parse().unwrap();
     /// Swap (index_topic_1 address sender, index_topic_2 address recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)
     pub static ref TOPIC_Swap: H256 = "0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67".parse().unwrap();
     /// Transfer (index_topic_1 address from, index_topic_2 address to, uint256 value)

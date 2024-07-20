@@ -98,3 +98,13 @@ plt.legend()
 plt.show()
 
 # %%
+df = load_datasets('uniswap3_pair_events_wbtc_weth')
+df[0]['tx_hash'].to_list()
+df.group_by('action').count()
+# %%
+plt.plot(df['height'], (df['price']/1e5)**-2)
+# %%
+plt.plot(df['height'], (df['value'] * (df['tick_upper'] - df['tick_lower'])).cum_sum())
+# %%
+plt.plot(df['height'], -df['fee1'].cum_sum().fill_null(strategy="forward"))
+# %%
