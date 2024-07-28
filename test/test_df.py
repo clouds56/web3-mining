@@ -88,34 +88,77 @@ df.sort('height')['tx_hash'].head().to_list()
 #print(df)
 find_uniswap_pair_v2 = True
 if find_uniswap_pair_v2:
-  for x in df.rows(): #print(x[4:7])
-      if x[2] != "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f":
-          continue
-      for y in token_addr[:4]:
-          #print(x[4],y)
-          if x[4].lower()==y:
-              for z in token_addr[4:]:
-                  if x[5]==z:
-                      pair_names.append(get_token(y)+"_"+get_token(z))
-                      pair_addr.append(x[6])
-                      print(get_token(y)+"_"+get_token(z),"@@@", x[4:7])
-                      import time
-                      time.sleep(4)
-  
-          elif x[5].lower()==y:
-              for z in token_addr[4:]:
-                  if x[4]==z:
-                      pair_names.append(get_token(z)+"_"+get_token(y))
-                      pair_addr.append(x[6])
-                      print(get_token(z)+"_"+get_token(y),"@@@", x[4:7])
-                      import time
-                      time.sleep(4)
-      #break
-  print(pair_names,len(pair_names), 198, "uniswap")
-  print(pair_addr,len(pair_addr), 199, "uniswap")
-  assert(len(pair_addr)==len(pair_names))
-  for i in range(len(pair_names)):
-      print('[uniswap_pair_events.{}]\ncontract = "{}"\ncreated = 10000000\n'.format(pair_names[i], pair_addr[i]))
+    for x in df.rows(): #print(x[4:7])
+        if x[2] != "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f":
+            continue
+        for y in token_addr[:4]:
+            #print(x[4],y)
+            if x[4].lower()==y:
+                for z in token_addr[4:]:
+                    if x[5]==z:
+                        pair_names.append(get_token(y)+"_"+get_token(z))
+                        pair_addr.append(x[6])
+                        print(get_token(y)+"_"+get_token(z),"@@@", x[4:7])
+                        import time
+                        time.sleep(4)
+    
+            elif x[5].lower()==y:
+                for z in token_addr[4:]:
+                    if x[4]==z:
+                        pair_names.append(get_token(z)+"_"+get_token(y))
+                        pair_addr.append(x[6])
+                        print(get_token(z)+"_"+get_token(y),"@@@", x[4:7])
+                        import time
+                        time.sleep(4)
+        #break
+    print(pair_names,len(pair_names), 198, "uniswap")
+    print(pair_addr,len(pair_addr), 199, "uniswap")
+    assert(len(pair_addr)==len(pair_names))
+    for i in range(len(pair_names)):
+        print('[uniswap_pair_events.{}]\ncontract = "{}"\ncreated = 10000000\n'.format(pair_names[i], pair_addr[i]))
+
+# decode pair address from uniswap3_factory_events
+df = load_datasets("uniswap3_factory_events")
+df.sort('height')['tx_hash'].head().to_list()
+#print((df.columns))
+find_uniswap_pair_v3 = True
+if find_uniswap_pair_v3:
+    pair_names = []
+    pair_addr = []
+    for x in df.rows(): #print(x[4:7])
+        if x[2] != "0x1F98431c8aD98523631AE4a59f267346ea31F984":
+            continue
+        for y in token_addr[:4]:
+            #print(x[4],y)
+            if x[4].lower()==y.lower():
+                for z in token_addr[:]:
+                    if x[5].lower()==z.lower() and y.lower()!=z.lower():
+                        if in_pair_set3(get_token(y), get_token(z), x[7], x[8]):
+                            print("p1", in_pair_set3(get_token(y), get_token(z), x[7], x[8]), get_token(y)+"_"+get_token(z))
+                            continue
+                        pair_name = get_token(y)+"_"+get_token(z)+"_"+str(x[7])+"_"+str(x[8])
+                        pairs_set.add(pair_name)
+                        pair_names.append(pair_name)
+                        pair_addr.append(x[6])
+                        print("b1", pair_name, "@@@", x[4:9])
+    
+            elif x[5].lower()==y.lower():
+                for z in token_addr[:]:
+                    if x[4].lower()==z.lower() and y.lower()!=z.lower():
+                        if in_pair_set3(get_token(y), get_token(z), x[7], x[8]):
+                            print("p2", in_pair_set3(get_token(y), get_token(z), x[7], x[8]), get_token(y)+"_"+get_token(z))
+                            continue
+                        pair_name = get_token(z)+"_"+get_token(y)+"_"+str(x[7])+"_"+str(x[8])
+                        pairs_set.add(pair_name)
+                        pair_names.append(pair_name)
+                        pair_addr.append(x[6])
+                        print("b2", pair_name, "@@@", x[4:9])
+        #break
+    print(pair_names,len(pair_names), 298, "uniswap3")
+    print(pair_addr,len(pair_addr), 299, "uniswap3")
+    assert(len(pair_addr)==len(pair_names))
+    for i in range(len(pair_names)):
+        print('[uniswap3_pair_events.{}]\ncontract = "{}"\ncreated = 10000000\n'.format(pair_names[i], pair_addr[i]))
 
 # %%
 df = load_files("uniswap_pair_old_*.parquet")
