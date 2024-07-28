@@ -5,6 +5,29 @@ import itertools
 import polars as pl
 import matplotlib.pyplot as plt
 from pathlib import Path
+
+import csv
+# 打开CSV文件
+tokens = []
+token_addr = []
+pair_names = []
+pair_addr = []
+with open('tokens.csv', newline='') as csvfile:
+    # 创建一个CSV阅读器对象
+    csvreader = csv.reader(csvfile)
+    # 逐行读取数据
+    for row in csvreader:
+        #print(row)
+        tokens.append(row[0])
+        token_addr.append(row[1])
+def get_token(taddr):
+    for t in range(len(token_addr)):
+        if token_addr[t] == taddr:
+            return tokens[t]
+    print("BadException")
+    raise ValueError("BadException")
+#print(tokens, token_addr)
+
 while not os.path.exists("Cargo.toml"):
   os.chdir("../")
 
@@ -62,6 +85,37 @@ df.mean()
 # %%
 df = load_datasets("uniswap_factory_events")
 df.sort('height')['tx_hash'].head().to_list()
+#print(df)
+find_uniswap_pair_v2 = True
+if find_uniswap_pair_v2:
+  for x in df.rows(): #print(x[4:7])
+      if x[2] != "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f":
+          continue
+      for y in token_addr[:4]:
+          #print(x[4],y)
+          if x[4].lower()==y:
+              for z in token_addr[4:]:
+                  if x[5]==z:
+                      pair_names.append(get_token(y)+"_"+get_token(z))
+                      pair_addr.append(x[6])
+                      print(get_token(y)+"_"+get_token(z),"@@@", x[4:7])
+                      import time
+                      time.sleep(4)
+  
+          elif x[5].lower()==y:
+              for z in token_addr[4:]:
+                  if x[4]==z:
+                      pair_names.append(get_token(z)+"_"+get_token(y))
+                      pair_addr.append(x[6])
+                      print(get_token(z)+"_"+get_token(y),"@@@", x[4:7])
+                      import time
+                      time.sleep(4)
+      #break
+  print(pair_names,len(pair_names), 198, "uniswap")
+  print(pair_addr,len(pair_addr), 199, "uniswap")
+  assert(len(pair_addr)==len(pair_names))
+  for i in range(len(pair_names)):
+      print('[uniswap_pair_events.{}]\ncontract = "{}"\ncreated = 10000000\n'.format(pair_names[i], pair_addr[i]))
 
 # %%
 df = load_files("uniswap_pair_old_*.parquet")
