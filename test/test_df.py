@@ -1,66 +1,20 @@
 # %%
-import os
+from common import *
 from typing import List
-import itertools
 import polars as pl
 import matplotlib.pyplot as plt
-from pathlib import Path
-while not os.path.exists("Cargo.toml"):
-  os.chdir("../")
-
-def load_files(files) -> pl.DataFrame:
-  if isinstance(files, str):
-    files = Path("data").rglob(files)
-  dfa: pl.DataFrame = None
-  for file in files:
-    df = pl.read_parquet(file)
-    if dfa is None:
-      dfa = df
-    else:
-      dfa = dfa.vstack(df)
-  return dfa
+enter_root_dir()
 
 # %%
-def try_int(s: str):
-  try:
-    return int(s)
-  except:
-    return None
-files = pl.DataFrame({
-  'path': Path("data").rglob("*.parquet")
-}).with_columns([
-  pl.col('path').map_elements(lambda x: x.name.split(".")[0]).alias('prefix'),
-  pl.col('path').map_elements(lambda x: try_int(x.name.split(".")[1])).alias('idx'),
-  pl.col('path').map_elements(lambda x: str(x)).alias('path'),
-]).with_columns([
-  pl.col('prefix').map_elements(lambda x: try_int(x.split("_")[-1])).alias('cut'),
-]).sort('prefix', 'idx')
-datasets = files.group_by('prefix').agg([
-  pl.first('cut'),
-  pl.max('idx').alias('max'),
-  pl.count('idx').alias('count'),
-  pl.col('path').alias('paths'),
-]).with_columns([
-  pl.col('prefix')
-    .str.strip_suffix(pl.col('cut').cast(pl.String))
-    .str.strip_suffix('_')
-    .fill_null(pl.col('prefix'))
-    .alias('name')
-]).sort('name')
-def load_datasets(name: str) -> pl.DataFrame:
-  filenames = datasets.filter(pl.col('name') == name)['paths'].explode()
-  prefix = "".join([list(x)[0] for x in itertools.takewhile(lambda x: len(x) == 1, map(set, zip(*filenames)))])
-  print("load", prefix, list(filenames.str.strip_prefix(prefix)))
-  return load_files(filenames)
-datasets
+ad = all_datasets()
 
 # %%
 # df = load_files("block_metrics_*.parquet")
-df = load_datasets('block_metrics')
+df = load_datasets(ad, 'block_metrics')
 df.mean()
 
 # %%
-df = load_datasets("uniswap_factory_events")
+df = load_datasets(ad, "uniswap_factory_events")
 df.sort('height')['tx_hash'].head().to_list()
 
 # %%
@@ -70,7 +24,7 @@ if df:
   list(zip(*[list(dfg[col]) for col in dfg.columns]))
 
 # %%
-pairs = (datasets
+pairs = (ad
   .filter(pl.col('name').str.starts_with('uniswap_pair_events'))
   .select(pl.col('name').str.strip_prefix('uniswap_pair_events_').alias('pair'))
   ['pair'])
@@ -78,7 +32,7 @@ pairs
 
 # %%
 for pair in pairs:
-  df = load_datasets("uniswap_pair_events_" + pair)
+  df = load_datasets(ad, "uniswap_pair_events_" + pair)
   print(df.group_by("action").len().sort("len", descending=True))
 
   df_acc = df.group_by('height').agg(
@@ -98,7 +52,17 @@ plt.legend()
 plt.show()
 
 # %%
-df = load_datasets('uniswap3_pair_events_wbtc_weth')
+df = load_datasets(ad, 'uniswap3_factory_events')
+df.filter(
+  (df['contract'] == '0x1F98431c8aD98523631AE4a59f267346ea31F984')
+  & (df['token0'] == '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')
+  & (df['token1'] == '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2')
+)
+df.group_by(['fee', 'tick_spacing']).count().sort('count')
+df.filter(df['fee'] == 1)['pair'].to_list()
+
+# %%
+df = load_datasets(ad, 'uniswap3_pair_events_wbtc_weth')
 df[0]['tx_hash'].to_list()
 df.group_by('action').count()
 # %%
