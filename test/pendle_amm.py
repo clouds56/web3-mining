@@ -2,6 +2,7 @@
 from typing import Literal, TypeAlias
 from common import *
 import polars as pl
+import matplotlib.pyplot as plt
 enter_root_dir()
 pair = "usdc_weth"
 ad = all_datasets()
@@ -136,11 +137,12 @@ amm.price_to_position(0.81)
 # %%
 import numpy as np
 rate = np.random.rand(100)
+# rate = np.abs(((rate - 0.5) / 10).cumsum() + 0.5)
 df = pl.DataFrame().with_columns(
   height = np.arange(len(rate)) * 15,
   rate = (1 + rate) ** (1 / (365 * 86400)) - 1,
 )
-df
+plt.plot(rate)
 # %%
 amm = Yield(1000, 1000)
 result = np.zeros((len(rate), 5))
@@ -160,6 +162,7 @@ df
 # %%
 import math
 class Pendle(PTT):
+  TRADE_STEPS = 10
   """
   1 / p == t * ln(y/x) / A + k
   """
@@ -181,10 +184,10 @@ class Pendle(PTT):
     return A, C
 
   def update_k(self):
-    self.k = 1 / (1 + self._rate) ** (self.t * self.total_time) - self.t * math.log(self.PT / self.TT) / self.A
+    self.k = (1 + self._rate) ** (self.t * self.total_time) - self.t * math.log(self.PT / self.TT) / self.A
 
   def price(self) -> float:
-    return self.t * math.log(self.PT / self.TT) / self.A + self.k
+    return 1 / (self.t * math.log(self.PT / self.TT) / self.A + self.k)
 
   def price_to_position(self, price: float) -> tuple[int, int]:
     """
@@ -194,11 +197,17 @@ class Pendle(PTT):
     y1 = x1 * ratio
     (price * ratio + 1) * x1  = y0 * price + x0
     """
-    ratio = math.exp((1 / price - self.k) * self.A / self.t)
-    print(ratio)
-    new_TT = (self.PT * price + self.TT) / (price * ratio + 1)
-    new_PT = new_TT * ratio
-    return new_PT, new_TT
+    def step(PT, TT, price):
+      ratio = math.exp((1 / price - self.k) * self.A / self.t)
+      new_TT = (PT * price + TT) / (price * ratio + 1)
+      new_PT = new_TT * ratio
+      return (new_PT, new_TT)
+    p = old_price = self.price()
+    tmp_PT, tmp_TT = self.PT, self.TT
+    for i in range(self.TRADE_STEPS):
+      p = (i+1) * (price - old_price) / self.TRADE_STEPS + old_price
+      tmp_PT, tmp_TT = step(tmp_PT, tmp_TT, p)
+    return tmp_PT, tmp_TT
 
 def natrual_expected(lower, upper, *, total_time):
   # here price means 1/price
@@ -209,7 +218,7 @@ def natrual_expected(lower, upper, *, total_time):
 
 pendle_init = Pendle.coeff_ac(0, 1.0, 0.435, total_time=90/365)
 amm = Pendle(1000, 1000, A=pendle_init[0], C=pendle_init[1])
-amm.price_to_position(0.84)
+amm.price_to_position(0.98)
 
 # %%
 amm = Pendle(1000, 1000, A=pendle_init[0], C=pendle_init[1])
