@@ -265,9 +265,6 @@ class TS:
     self.right_limit = self.TICK_BASE ** (self.idx + 1)
     self.update_k()
 
-  def center_price(self) -> float:
-    return (self.left_limit * self.right_limit) ** 0.5
-
   def price(self) -> float:
     raise NotImplementedError
 
@@ -275,7 +272,7 @@ class TS:
     raise NotImplementedError
 
   def update_k(self):
-    self.k = self.XT + self.YT * self.center_price()
+    pass
 
   def target_price(self, price: float) -> float:
     old_price = self.price()
@@ -290,19 +287,53 @@ class TS:
     return delta
 
 def test_samm(samm: TS, df: pl.DataFrame):
-  result = np.zeros((len(df), 4))
+  result = np.zeros((len(df), 5))
   for i, row in enumerate(df.rows(named=True)):
     (xt, yt) = samm.price_to_position(row['price'])
-    samm.set_position(xt, yt)
-    result[i, :] = xt, yt, samm.k, samm.price()
+    delta_xt, _ = samm.set_position(xt, yt)
+    feerate = abs(delta_xt) * samm.FEE_RATE / (xt + yt * samm.price())
+    result[i, :] = xt, yt, samm.k, samm.price(), feerate
   return df.with_columns(
     xt = result[:, 0],
     yt = result[:, 1],
     ts_k = result[:, 2],
     ts_price = result[:, 3],
+    ts_fee = result[:, 4],
   ).with_columns(
     ts_tv = pl.col("xt") + pl.col("yt") * pl.col("price")
   )
+
+# %%
+class UniswapV2(TS):
+  TICK_BASE = float('inf')
+  def __init__(self, xt: int, yt: int) -> None:
+    super().__init__(xt, yt, 0)
+    self.left_limit = 0
+    self.right_limit = self.TICK_BASE
+
+  def update_k(self):
+    self.k = math.sqrt(self.XT * self.YT)
+
+  def price(self) -> float:
+    return self.XT / self.YT
+
+  def price_to_position(self, price: float) -> tuple[int, int]:
+    price = self.target_price(price)
+    new_XT = self.k * math.sqrt(price)
+    new_YT = self.k / math.sqrt(price)
+    return new_XT, new_YT
+
+samm = UniswapV2(1000, 1000)
+test_samm(samm, df_rand)
+
+# %%
+samm = UniswapV2(1000, 1000)
+df_result = test_samm(samm, df)
+df_result[0, 'ts_fee'] = 0
+df_result = df_result.with_columns(
+  ts_fee_cumsum = (1 + pl.col('ts_fee')).cum_prod()
+)
+plt.plot(df_result['ts_fee_cumsum'])
 
 # %%
 class UniswapV3(TS):
@@ -357,6 +388,14 @@ samm = UniswapV3(1000, 1000, 18)
 test_samm(samm, df_rand)
 
 # %%
+samm = UniswapV3(1000, 1000, -400)
+df_result = test_samm(samm, df)
+df_result = df_result.with_columns(
+  ts_fee_cumsum = (1 + pl.col('ts_fee')).cum_prod()
+)
+plt.plot(df_result['ts_fee_cumsum'])
+
+# %%
 class TickSwap(TS):
   def __init__(self, xt: int, yt: int, idx: int) -> None:
     super().__init__(xt, yt, idx=idx)
@@ -365,6 +404,12 @@ class TickSwap(TS):
     # if self.XT == 0: return self.center_price() / (1 + self.FEE_RATE)
     # if self.YT == 0: return self.center_price() * (1 + self.FEE_RATE)
     return self.center_price()
+
+  def center_price(self) -> float:
+    return (self.left_limit * self.right_limit) ** 0.5
+
+  def update_k(self):
+    self.k = self.XT + self.YT * self.center_price()
 
   def price_to_position(self, price: float) -> tuple[int, int]:
     center_price = self.center_price()
@@ -378,3 +423,14 @@ class TickSwap(TS):
 # %%
 samm = TickSwap(1000, 1000, 18)
 test_samm(samm, df_rand)
+
+# %%
+samm = TickSwap(1000, 1000, -400)
+df_result = test_samm(samm, df)
+# %%
+df_result = df_result.with_columns(
+  ts_fee_cumsum = pl.col('ts_fee').cum_sum()
+)
+plt.plot(df_result['ts_fee_cumsum'])
+
+# %%
