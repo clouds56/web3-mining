@@ -1,6 +1,5 @@
 # %%
 from common import *
-from typing import List
 import polars as pl
 import matplotlib.pyplot as plt
 enter_root_dir()
@@ -35,12 +34,15 @@ for pair in pairs:
   df = load_datasets(ad, "uniswap_pair_events_" + pair)
   print(df.group_by("action").len().sort("len", descending=True))
 
-  df_acc = df.group_by('height').agg(
+  df_acc = df.with_columns(
+    reserve0 = pl.col('reserve0').fill_null(strategy='forward'),
+    reserve1 = pl.col('reserve1').fill_null(strategy='forward'),
+  ).group_by('height').agg(
     (pl.col('value_in').fill_null(0) - pl.col('value_out').fill_null(0)).sum(),
     (pl.col('amount0_in').fill_null(0) - pl.col('amount0_out').fill_null(0)).sum(),
     (pl.col('amount1_in').fill_null(0) - pl.col('amount1_out').fill_null(0)).sum(),
-    pl.col('reserve0').fill_null(strategy='forward').last(),
-    pl.col('reserve1').fill_null(strategy='forward').last(),
+    pl.col('reserve0').last(),
+    pl.col('reserve1').last(),
   ).sort('height').with_columns(
     pl.col('value_in').cum_sum().alias('value'),
   )

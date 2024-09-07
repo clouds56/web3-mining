@@ -2,34 +2,44 @@
 from typing import Literal, TypeAlias
 from common import *
 import polars as pl
+import numpy as np
 import matplotlib.pyplot as plt
 enter_root_dir()
 pair = "usdc_weth"
 ad = all_datasets()
 
 # %%
-df = load_datasets(ad, f"uniswap_pair_block_{pair}")
+dfb = load_datasets(ad, f"block_metrics")
+
+# %%
+df = load_datasets(ad, f"uniswap_pair_block_{pair}").join(
+  dfb.select('height', 'timestamp'), on='height',
+)
 df = df.with_columns(
   fee_index = (df['reserve0'] * df['reserve1']).sqrt() / df['value'],
   price = df['reserve0'] / df['reserve1'],
 ).sort('height')
 
 # %%
-import matplotlib.pyplot as plt
-plt.plot(df['fee_index'])
+set_axes_locator(plt.gca(), matplotlib.dates.MonthLocator(interval=6))
+plt.plot(np.array(df['timestamp'], dtype='datetime64[s]'), df['fee_index'])
 
 # %%
-window = 7 * 86400 / 15
-last_index = df.select(index = pl.max_horizontal(df['height'].search_sorted(df['height'] - window, 'left'), 1) - 1)['index']
+window = 7 * 86400
+last_index = df.select(index = pl.max_horizontal(pl.col('timestamp').search_sorted(pl.col('timestamp') - window, 'left'), 1) - 1)['index']
 df = df.with_columns(
-  rate = (df['fee_index'] - df[last_index]['fee_index']) / (df['height'] - df[last_index]['height']) * window,
+  rate = (1 + (df['fee_index'] - df[last_index]['fee_index'])) ** (1 / (df['timestamp'] - df[last_index]['timestamp'])) - 1,
   sigma = df['price'].fill_null(strategy='forward').rolling_std(40000) ** 2,
+).with_columns(
+  apy = (1 + pl.col("rate")) ** (365 * 86400) - 1,
 )
 
 # %%
-plt.plot(df['fee_avg'])
+set_axes_locator(plt.gca(), matplotlib.dates.MonthLocator(interval=6))
+plt.plot(np.array(df['timestamp'], dtype='datetime64[s]'), df['rate'])
 # %%
-plt.plot(df['sigma'])
+set_axes_locator(plt.gca(), matplotlib.dates.MonthLocator(interval=6))
+plt.plot(np.array(df['timestamp'], dtype='datetime64[s]'), df['sigma'])
 
 # %%
 TOKEN_TYPE: TypeAlias = Literal["PT"] | Literal["T"]
@@ -97,6 +107,36 @@ class PTT:
     self.t = 1 - time / self.total_time
     self.update_k()
 
+def test_amm(amm: PTT, df: pl.DataFrame):
+  result = np.zeros((len(df), 5))
+  start_time = df[0, 'timestamp']
+  for i, row in enumerate(df.rows(named=True)):
+    amm.set_time(row['timestamp'] - start_time)
+    (pt, tt) = amm.rate_to_position(row['rate'])
+    amm.set_position(pt, tt)
+    result[i, :] = pt, tt, amm.k, amm.price(), amm.t
+  return df.with_columns(
+    pt = result[:, 0],
+    tt = result[:, 1],
+    ptt_k = result[:, 2],
+    ptt_price = result[:, 3],
+    ptt_time = result[:, 4],
+  )
+
+# %%
+import numpy as np
+rate = np.random.rand(100)
+# rate = np.abs(((rate - 0.5) / 10).cumsum() + 0.5)
+df_rand = pl.DataFrame().with_columns(
+  height = np.arange(len(rate)) * 15,
+  apy = rate,
+  rate = (1 + rate) ** (1 / (365 * 86400)) - 1,
+).with_columns(
+  timestamp = pl.col('height') * 15 + 10_000_000,
+)
+plt.plot(rate)
+
+# %%
 class Yield(PTT):
   """
   x^(1-t) + y^(1-t) = k
@@ -135,30 +175,9 @@ amm = Yield(1000, 1000)
 amm.price_to_position(0.81)
 
 # %%
-import numpy as np
-rate = np.random.rand(100)
-# rate = np.abs(((rate - 0.5) / 10).cumsum() + 0.5)
-df = pl.DataFrame().with_columns(
-  height = np.arange(len(rate)) * 15,
-  rate = (1 + rate) ** (1 / (365 * 86400)) - 1,
-)
-plt.plot(rate)
-# %%
 amm = Yield(1000, 1000)
-result = np.zeros((len(rate), 5))
-for i, row in enumerate(df.rows(named=True)):
-  amm.set_time(row['height'] * 15)
-  (pt, tt) = amm.rate_to_position(row['rate'])
-  amm.set_position(pt, tt)
-  result[i, :] = pt, tt, amm.k, amm.price(), amm.t
-df = df.with_columns(
-  pt = result[:, 0],
-  tt = result[:, 1],
-  k = result[:, 2],
-  price = result[:, 3],
-  time = result[:, 4],
-)
-df
+test_amm(amm, df_rand)
+
 # %%
 import math
 class Pendle(PTT):
@@ -171,14 +190,17 @@ class Pendle(PTT):
     self.k = C
     super().__init__(pt, tt)
 
-  def coeff_ac(lower: float, upper: float, expected: float, *, total_time: int | float):
+  def coeff_ac(lower: float, upper: float, expected: float | None = None, *, total_time: int | float):
     """
     min = 0, max, expacted -> A, C
     """
     # here price means 1/price
     lower_price = (1 + lower) ** total_time
     upper_price = (1 + upper) ** total_time
-    expected_price = (1 + expected) ** total_time
+    if expected is None:
+      expected_price = (upper_price + lower_price) / 2
+    else:
+      expected_price = (1 + expected) ** total_time
     C = expected_price
     A = math.log(9) / max(upper_price - expected_price, expected_price - lower_price)
     return A, C
@@ -209,32 +231,25 @@ class Pendle(PTT):
       tmp_PT, tmp_TT = step(tmp_PT, tmp_TT, p)
     return tmp_PT, tmp_TT
 
-def natrual_expected(lower, upper, *, total_time):
-  # here price means 1/price
-  upper_price = (1+upper) ** total_time
-  lower_price = (1+lower) ** total_time
-  expected_price = (upper_price + lower_price) / 2
-  return expected_price ** (1 / total_time) - 1
 
-pendle_init = Pendle.coeff_ac(0, 1.0, 0.435, total_time=90/365)
+pendle_init = Pendle.coeff_ac(0, 1.0, total_time=90/365)
 amm = Pendle(1000, 1000, A=pendle_init[0], C=pendle_init[1])
 amm.price_to_position(0.98)
 
 # %%
 amm = Pendle(1000, 1000, A=pendle_init[0], C=pendle_init[1])
-result = np.zeros((len(rate), 5))
-for i, row in enumerate(df.rows(named=True)):
-  amm.set_time(row['height'] * 15)
-  (pt, tt) = amm.rate_to_position(row['rate'])
-  amm.set_position(pt, tt)
-  result[i, :] = pt, tt, amm.k, amm.price(), amm.t
-df = df.with_columns(
-  pt = result[:, 0],
-  tt = result[:, 1],
-  k = result[:, 2],
-  price = result[:, 3],
-  time = result[:, 4],
+test_amm(amm, df_rand)
+
+# %%
+start_time = np.datetime64('2022-12-01', 's').astype(np.int64)
+window = 90 * 86400
+pendle_init = Pendle.coeff_ac(0, 0.25, total_time=90/365)
+amm = Pendle(1000, 1000, A=pendle_init[0], C=pendle_init[1])
+df_test = df.filter((df['timestamp'] > start_time) & (df['timestamp'] < start_time + window)).select("height", "timestamp", "price", "rate", "apy")
+df_test = test_amm(amm, df_test).with_columns(
+  ptt_tv = pl.col('pt') * pl.col('ptt_price') + pl.col('tt'),
+  ptt_expected_apy = pl.col('ptt_k') ** (365 * 86400 / (pl.col('ptt_time') * amm.total_time)) - 1,
 )
-df
+df_test
 
 # %%

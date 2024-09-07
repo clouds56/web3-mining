@@ -27,15 +27,17 @@ def try_int(s: str):
     return int(s)
   except:
     return None
-def all_datasets(path = Path("data").rglob("*.parquet")):
+def all_datasets(path = None):
+  if path is None:
+    path = Path("data").rglob("*.parquet")
   files = pl.DataFrame({
     'path': path
   }).with_columns([
-    pl.col('path').map_elements(lambda x: x.name.split(".")[0]).alias('prefix'),
-    pl.col('path').map_elements(lambda x: try_int(x.name.split(".")[1])).alias('idx'),
-    pl.col('path').map_elements(lambda x: str(x)).alias('path'),
+    pl.col('path').map_elements(lambda x: x.name.split(".")[0], return_dtype=pl.String).alias('prefix'),
+    pl.col('path').map_elements(lambda x: try_int(x.name.split(".")[1]), return_dtype=pl.Int64).alias('idx'),
+    pl.col('path').map_elements(lambda x: str(x), return_dtype=pl.String).alias('path'),
   ]).with_columns([
-    pl.col('prefix').map_elements(lambda x: try_int(x.split("_")[-1])).alias('cut'),
+    pl.col('prefix').map_elements(lambda x: try_int(x.split("_")[-1]), return_dtype=pl.Int64).alias('cut'),
   ]).sort('prefix', 'idx')
   datasets = files.group_by('prefix').agg([
     pl.first('cut'),
@@ -51,7 +53,13 @@ def all_datasets(path = Path("data").rglob("*.parquet")):
   ]).sort('name')
   return datasets
 def load_datasets(ad: pl.DataFrame, name: str) -> pl.DataFrame:
-  filenames = ad.filter(pl.col('name') == name)['paths'].explode()
+  filenames = ad.filter((pl.col('name') == name) | (pl.col('prefix') == name))['paths'].explode()
   prefix = "".join([list(x)[0] for x in itertools.takewhile(lambda x: len(x) == 1, map(set, zip(*filenames)))])
   print("load", prefix, list(filenames.str.strip_prefix(prefix)))
   return load_files(filenames)
+
+# %%
+import matplotlib.axes, matplotlib.dates, matplotlib.ticker
+def set_axes_locator(ax: matplotlib.axes.Axes, locator: matplotlib.ticker.Locator):
+  ax.xaxis.set_major_locator(locator)
+  ax.xaxis.set_major_formatter(matplotlib.dates.ConciseDateFormatter(locator))
