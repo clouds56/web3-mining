@@ -63,3 +63,7 @@ import matplotlib.axes, matplotlib.dates, matplotlib.ticker
 def set_axes_locator(ax: matplotlib.axes.Axes, locator: matplotlib.ticker.Locator):
   ax.xaxis.set_major_locator(locator)
   ax.xaxis.set_major_formatter(matplotlib.dates.ConciseDateFormatter(locator))
+
+# %% pure functions
+def clamp(x, lower, upper):
+  return min(max(x, lower), upper)
