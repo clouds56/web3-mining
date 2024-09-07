@@ -44,6 +44,7 @@ plt.plot(np.array(df['timestamp'], dtype='datetime64[s]'), df['sigma'])
 # %%
 TOKEN_TYPE: TypeAlias = Literal["PT"] | Literal["T"]
 class PTT:
+  FEE_RATE = 0.001
   def __init__(self, pt: int, tt: int, *, total_time = 90 * 86400) -> None:
     self._rate = 0
     self.t = 1
@@ -108,32 +109,44 @@ class PTT:
     self.update_k()
 
 def test_amm(amm: PTT, df: pl.DataFrame):
-  result = np.zeros((len(df), 5))
+  result = np.zeros((len(df), 6))
   start_time = df[0, 'timestamp']
   for i, row in enumerate(df.rows(named=True)):
     amm.set_time(row['timestamp'] - start_time)
     (pt, tt) = amm.rate_to_position(row['rate'])
-    amm.set_position(pt, tt)
-    result[i, :] = pt, tt, amm.k, amm.price(), amm.t
+    _, delta_tt = amm.set_position(pt, tt)
+    fee = abs(delta_tt) / (amm.price() * pt + tt) * amm.FEE_RATE
+    result[i, :] = pt, tt, amm.k, amm.price(), amm.t, fee
+  result[0, -1] = 0
   return df.with_columns(
     pt = result[:, 0],
     tt = result[:, 1],
     ptt_k = result[:, 2],
     ptt_price = result[:, 3],
     ptt_time = result[:, 4],
+    ptt_fee = result[:, 5],
+  ).with_columns(
+    ptt_fee_cumsum = (1 + pl.col("ptt_fee")).cum_prod(),
+    ptt_tv = pl.col('pt') * pl.col('ptt_price') + pl.col('tt'),
   )
 
 # %%
 import numpy as np
 rate = np.random.rand(100)
 # rate = np.abs(((rate - 0.5) / 10).cumsum() + 0.5)
+price = np.random.rand(100) * 0.2 + 2.4
 df_rand = pl.DataFrame().with_columns(
-  height = np.arange(len(rate)) * 15,
+  height = np.arange(len(rate)) * 10,
+  price = price,
   apy = rate,
   rate = (1 + rate) ** (1 / (365 * 86400)) - 1,
 ).with_columns(
   timestamp = pl.col('height') * 15 + 10_000_000,
 )
+
+start_time = np.datetime64('2022-12-01', 's').astype(np.int64)
+window = 90 * 86400
+df_test = df.filter((df['timestamp'] > start_time) & (df['timestamp'] < start_time + window)).select("height", "timestamp", "price", "rate", "apy")
 plt.plot(rate)
 
 # %%
@@ -176,7 +189,7 @@ amm.price_to_position(0.81)
 
 # %%
 amm = Yield(1000, 1000)
-test_amm(amm, df_rand)
+test_amm(amm, df_test)
 
 # %%
 import math
@@ -241,13 +254,9 @@ amm = Pendle(1000, 1000, A=pendle_init[0], C=pendle_init[1])
 test_amm(amm, df_rand)
 
 # %%
-start_time = np.datetime64('2022-12-01', 's').astype(np.int64)
-window = 90 * 86400
 pendle_init = Pendle.coeff_ac(0, 0.25, total_time=90/365)
 amm = Pendle(1000, 1000, A=pendle_init[0], C=pendle_init[1])
-df_test = df.filter((df['timestamp'] > start_time) & (df['timestamp'] < start_time + window)).select("height", "timestamp", "price", "rate", "apy")
 df_test = test_amm(amm, df_test).with_columns(
-  ptt_tv = pl.col('pt') * pl.col('ptt_price') + pl.col('tt'),
   ptt_expected_apy = pl.col('ptt_k') ** (365 * 86400 / (pl.col('ptt_time') * amm.total_time)) - 1,
 )
 df_test
@@ -293,6 +302,7 @@ def test_samm(samm: TS, df: pl.DataFrame):
     delta_xt, _ = samm.set_position(xt, yt)
     feerate = abs(delta_xt) * samm.FEE_RATE / (xt + yt * samm.price())
     result[i, :] = xt, yt, samm.k, samm.price(), feerate
+  result[0, -1] = 0
   return df.with_columns(
     xt = result[:, 0],
     yt = result[:, 1],
@@ -300,7 +310,8 @@ def test_samm(samm: TS, df: pl.DataFrame):
     ts_price = result[:, 3],
     ts_fee = result[:, 4],
   ).with_columns(
-    ts_tv = pl.col("xt") + pl.col("yt") * pl.col("price")
+    ts_fee_cumsum = (1 + pl.col('ts_fee')).cum_prod(),
+    ts_tv = pl.col("xt") + pl.col("yt") * pl.col("price"),
   )
 
 # %%
@@ -329,10 +340,6 @@ test_samm(samm, df_rand)
 # %%
 samm = UniswapV2(1000, 1000)
 df_result = test_samm(samm, df)
-df_result[0, 'ts_fee'] = 0
-df_result = df_result.with_columns(
-  ts_fee_cumsum = (1 + pl.col('ts_fee')).cum_prod()
-)
 plt.plot(df_result['ts_fee_cumsum'])
 
 # %%
@@ -372,27 +379,12 @@ samm = UniswapV3(1000, 1000, 180)
 samm.price()
 
 # %%
-import numpy as np
-price = np.random.rand(100) * 0.2 + 2.4
-# rate = np.abs(((rate - 0.5) / 10).cumsum() + 0.5)
-df_rand = pl.DataFrame().with_columns(
-  height = np.arange(len(rate)) * 10,
-  price = price,
-).with_columns(
-  timestamp = pl.col('height') * 15 + 10_000_000,
-)
-plt.plot(price)
-
-# %%
 samm = UniswapV3(1000, 1000, 18)
 test_samm(samm, df_rand)
 
 # %%
 samm = UniswapV3(1000, 1000, -400)
 df_result = test_samm(samm, df)
-df_result = df_result.with_columns(
-  ts_fee_cumsum = (1 + pl.col('ts_fee')).cum_prod()
-)
 plt.plot(df_result['ts_fee_cumsum'])
 
 # %%
@@ -427,10 +419,6 @@ test_samm(samm, df_rand)
 # %%
 samm = TickSwap(1000, 1000, -400)
 df_result = test_samm(samm, df)
-# %%
-df_result = df_result.with_columns(
-  ts_fee_cumsum = pl.col('ts_fee').cum_sum()
-)
 plt.plot(df_result['ts_fee_cumsum'])
 
 # %%
