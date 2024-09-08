@@ -10,25 +10,12 @@ use std::{path::Path, str::FromStr as _, sync::{atomic::AtomicU64, Arc}};
 use anyhow::Result;
 use config::Config;
 use ethers_providers::{JsonRpcClient, Middleware, Provider};
-use indexmap::IndexMap;
-use tasks::{uniswap::UniswapStage, RunConfig, RunEvent};
+use tasks::{pendle::PendleStage, uniswap::UniswapStage, RunConfig, RunEvent};
 use tracing_subscriber::fmt::format::FmtSpan;
 
 async fn get_block_number<P: JsonRpcClient>(client: &Provider<P>) -> Result<u64> {
   let block_number = client.get_block_number().await?;
   Ok(block_number.as_u64())
-}
-
-#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PairStage {
-  pub contract: String,
-  #[serde(alias="crated")]
-  pub created: u64,
-  #[serde(default, skip_serializing_if = "checkpoint_is_none")]
-  pub checkpoint: Arc<AtomicU64>,
-}
-fn checkpoint_is_none(data: &AtomicU64) -> bool {
-  data.load(std::sync::atomic::Ordering::SeqCst) == 0
 }
 
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
@@ -39,6 +26,9 @@ pub struct Stage {
 
   #[serde(flatten)]
   uniswap: UniswapStage,
+
+  #[serde(flatten)]
+  pendle: PendleStage,
 }
 
 pub struct DatasetName<'a> {
@@ -143,33 +133,8 @@ async fn main() -> Result<()> {
     default_event_listener(e);
   }).await?;
 
-  RunConfig::new(&config, stage.uniswap.uniswap_factory_events.clone(), "uniswap_factory_events", &|start, end|
-    metrics::uniswap_v2::fetch_uniswap_factory(&client, start, end)
-  ).run(default_event_listener).await?;
-
-  RunConfig::new(&config, stage.uniswap.uniswap3_factory_events.clone(), "uniswap3_factory_events", &|start, end|
-    metrics::uniswap_v3::fetch_factory(&client, start, end)
-  ).run(default_event_listener).await?;
-
-  for (name, pair) in &stage.uniswap.uniswap_pair_events {
-    if checkpoint_is_none(&pair.checkpoint) {
-      pair.checkpoint.store(pair.created / config.cut * config.cut, std::sync::atomic::Ordering::SeqCst);
-    }
-    let contract = pair.contract.parse().unwrap();
-    RunConfig::new(&config, pair.checkpoint.clone(), &format!("uniswap_pair_events_{}", name), &|start, end|
-      metrics::uniswap_v2::fetch_uniswap_pair(&client, start, end, contract)
-    ).run(default_event_listener).await?;
-  }
-
-  for (name, pair) in &stage.uniswap.uniswap3_pair_events {
-    if checkpoint_is_none(&pair.checkpoint) {
-      pair.checkpoint.store(pair.created / config.cut * config.cut, std::sync::atomic::Ordering::SeqCst);
-    }
-    let contract = pair.contract.parse().unwrap();
-    RunConfig::new(&config, pair.checkpoint.clone(), &format!("uniswap3_pair_events_{}", name), &|start, end|
-      metrics::uniswap_v3::fetch_uniswap_pair(&client, start, end, contract)
-    ).run(default_event_listener).await?;
-  }
+  stage.uniswap.run_tasks(&client, &config, default_event_listener).await?;
+  stage.pendle.run_tasks(&client, &config, default_event_listener).await?;
 
   save_stage(&config.data_dir, &stage)?;
   Ok(())

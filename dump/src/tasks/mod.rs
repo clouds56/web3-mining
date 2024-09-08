@@ -1,10 +1,33 @@
 pub mod uniswap;
+pub mod pendle;
 
 use std::{future::Future, path::Path, sync::{atomic::AtomicU64, Arc}};
 
 use polars::{frame::DataFrame, io::SerReader as _, prelude::{ParquetReader, ParquetWriter}};
 
 use crate::{config::{next_cut, Config}, Result};
+
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ContractStage {
+  pub contract: String,
+  pub created: u64,
+  #[serde(default, skip_serializing_if = "checkpoint_is_none")]
+  pub checkpoint: Arc<AtomicU64>,
+}
+pub fn checkpoint_is_none(data: &AtomicU64) -> bool {
+  data.load(std::sync::atomic::Ordering::SeqCst) == 0
+}
+impl ContractStage {
+  pub fn checkpoint(&self) -> u64 {
+    self.checkpoint.load(std::sync::atomic::Ordering::SeqCst)
+  }
+
+  pub fn init_checkpoint(&self, cut: u64) {
+    if self.checkpoint() == 0 {
+      self.checkpoint.store(self.created / cut * cut, std::sync::atomic::Ordering::SeqCst);
+    }
+  }
+}
 
 macro_rules! is_break {
   ($expr:expr) => {

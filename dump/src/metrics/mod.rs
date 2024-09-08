@@ -1,9 +1,10 @@
-use ethers_core::types::{Address, H256, U256};
+use ethers_core::types::{Address, H256, I256, U256};
 
 pub mod block;
 pub mod event;
 pub mod uniswap_v2;
 pub mod uniswap_v3;
+pub mod pendle;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Value(pub H256);
@@ -29,6 +30,10 @@ impl Value {
 
   pub fn as_u128(&self) -> u128 {
     self.as_u256().as_u128()
+  }
+
+  pub fn as_i256(&self) -> I256 {
+    I256::from_raw(self.as_u256())
   }
 
   pub fn as_i128(&self) -> i128 {
