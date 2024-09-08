@@ -60,10 +60,32 @@ def load_datasets(ad: pl.DataFrame, name: str) -> pl.DataFrame:
   return load_files(filenames)
 
 # %%
+import numpy as np
+import matplotlib.pyplot as plt
 import matplotlib.axes, matplotlib.dates, matplotlib.ticker
-def set_axes_locator(ax: matplotlib.axes.Axes, locator: matplotlib.ticker.Locator):
-  ax.xaxis.set_major_locator(locator)
-  ax.xaxis.set_major_formatter(matplotlib.dates.ConciseDateFormatter(locator))
+def set_axes_locator(ax: matplotlib.axes.Axes | np.ndarray[matplotlib.axes.Axes], locator: matplotlib.ticker.Locator | None = None):
+  if locator is None:
+    locator = matplotlib.dates.AutoDateLocator()
+  if isinstance(ax, np.ndarray):
+    for a in ax.flat:
+      a.xaxis.set_major_locator(locator)
+      a.xaxis.set_major_formatter(matplotlib.dates.ConciseDateFormatter(locator))
+  else:
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(matplotlib.dates.ConciseDateFormatter(locator))
+
+def plotting(df: pl.DataFrame, *columns: str, time_column: str = 'datetime'):
+  if len(columns) == 2:
+    fig, ax = plt.subplots()
+    set_axes_locator(ax)
+    ax.plot(df[time_column], df[columns[0]], label=columns[0], color='tab:blue')
+    ax.twinx().plot(df[time_column], df[columns[1]], label=columns[1], color='tab:orange')
+    return fig
+  fig, axs = plt.subplots(len(columns), 1)
+  set_axes_locator(axs)
+  for column, ax in zip(columns, axs):
+    ax.plot(df[time_column], df[column])
+  return fig
 
 # %% pure functions
 def clamp(x, lower, upper):

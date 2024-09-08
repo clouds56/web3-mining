@@ -4,6 +4,7 @@ from common import *
 import polars as pl
 import numpy as np
 import matplotlib.pyplot as plt
+import math
 enter_root_dir()
 pair = "usdc_weth"
 ad = all_datasets()
@@ -16,30 +17,22 @@ df = load_datasets(ad, f"uniswap_pair_block_{pair}").join(
   dfb.select('height', 'timestamp'), on='height',
 )
 df = df.with_columns(
+  datetime = pl.from_epoch(df['timestamp'], time_unit='s'),
   fee_index = (df['reserve0'] * df['reserve1']).sqrt() / df['value'],
   price = df['reserve0'] / df['reserve1'],
 ).sort('height')
-
-# %%
-set_axes_locator(plt.gca(), matplotlib.dates.MonthLocator(interval=6))
-plt.plot(np.array(df['timestamp'], dtype='datetime64[s]'), df['fee_index'])
+plotting(df, 'price', 'fee_index')
 
 # %%
 window = 7 * 86400
 last_index = df.select(index = pl.max_horizontal(pl.col('timestamp').search_sorted(pl.col('timestamp') - window, 'left'), 1) - 1)['index']
 df = df.with_columns(
   rate = (1 + (df['fee_index'] - df[last_index]['fee_index'])) ** (1 / (df['timestamp'] - df[last_index]['timestamp'])) - 1,
-  sigma = df['price'].fill_null(strategy='forward').rolling_std(40000) ** 2,
+  sigma = df['price'].rolling_std(40000) ** 2,
 ).with_columns(
   apy = (1 + pl.col("rate")) ** (365 * 86400) - 1,
 )
-
-# %%
-set_axes_locator(plt.gca(), matplotlib.dates.MonthLocator(interval=6))
-plt.plot(np.array(df['timestamp'], dtype='datetime64[s]'), df['rate'])
-# %%
-set_axes_locator(plt.gca(), matplotlib.dates.MonthLocator(interval=6))
-plt.plot(np.array(df['timestamp'], dtype='datetime64[s]'), df['sigma'])
+plotting(df, 'rate', 'sigma')
 
 # %%
 TOKEN_TYPE: TypeAlias = Literal["PT"] | Literal["T"]
@@ -110,9 +103,9 @@ class PTT:
 
 def test_amm(amm: PTT, df: pl.DataFrame):
   result = np.zeros((len(df), 6))
-  start_time = df[0, 'timestamp']
+  df = df.with_columns(timedelta = pl.col('timestamp') - df[0, 'timestamp'])
   for i, row in enumerate(df.rows(named=True)):
-    amm.set_time(row['timestamp'] - start_time)
+    amm.set_time(row['timedelta'])
     (pt, tt) = amm.rate_to_position(row['rate'])
     _, delta_tt = amm.set_position(pt, tt)
     fee = abs(delta_tt) / (amm.price() * pt + tt) * amm.FEE_RATE
@@ -274,6 +267,10 @@ class TS:
     self.right_limit = self.TICK_BASE ** (self.idx + 1)
     self.update_k()
 
+  @classmethod
+  def price_to_tick(cls, price: float) -> int:
+    return math.floor(math.log(price, cls.TICK_BASE))
+
   def price(self) -> float:
     raise NotImplementedError
 
@@ -412,6 +409,12 @@ class TickSwap(TS):
       return (0, self.k / center_price)
     return self.XT, self.YT
 
+class TickSwapFee1(TickSwap): FEE_RATE = 0.001
+class TickSwapFee3(TickSwap): FEE_RATE = 0.003
+class TickSwapFee10(TickSwap): FEE_RATE = 0.01
+class TickSwapFee30(TickSwap): FEE_RATE = 0.03
+class TickSwapFee100(TickSwap): FEE_RATE = 0.1
+
 # %%
 samm = TickSwap(1000, 1000, 18)
 test_samm(samm, df_rand)
@@ -420,5 +423,41 @@ test_samm(samm, df_rand)
 samm = TickSwap(1000, 1000, -400)
 df_result = test_samm(samm, df)
 plt.plot(df_result['ts_fee_cumsum'])
+
+# %%
+start_time = np.datetime64('2022-08-01', 's').astype(np.int64)
+before_window = 7 * 86400
+after_window = 90 * 86400
+avg_price = df.filter((df['timestamp'] > start_time - before_window) & (df['timestamp'] < start_time)).select('price').mean().item()
+samm = TickSwap(1000, 1000, idx=TickSwap.price_to_tick(avg_price))
+df_test = df.filter((df['timestamp'] > start_time) & (df['timestamp'] < start_time + after_window))
+df_test = test_samm(samm, df_test)
+plotting(df_test, 'price', 'ts_fee_cumsum')
+avg_price
+
+# %%
+models = [TickSwapFee1, TickSwapFee3, TickSwapFee10, TickSwapFee30, TickSwapFee100]
+df_test_result = [test_samm(model(1000, 1000, idx=TickSwap.price_to_tick(avg_price)), df_test) for model in models]
+
+# %%
+fig, axs = plt.subplots(2, 1)
+set_axes_locator(axs)
+for df_result, model in zip(df_test_result, models):
+  axs[0].plot(df_test['datetime'], df_result['ts_fee_cumsum'], label=f"fee {model.FEE_RATE*100}%")
+axs[0].legend()
+axs[1].plot(df_test['datetime'], df_test['price'])
+avg_price
+
+# %%
+df_test_result[-1].filter(pl.col('ts_fee')>0)
+
+# %%
+set_axes_locator(plt.gca())
+plt.axhline(samm.center_price() * 1.1)
+plt.axhline(df_test[0, 'price'])
+plt.axhline(samm.center_price() / 1.1)
+for row in df_test_result[-1].filter(pl.col('ts_fee')>0).rows(named=True):
+  plt.axvline(row['datetime'], color='red')
+plt.plot(df_test['datetime'], df_test['price'])
 
 # %%
