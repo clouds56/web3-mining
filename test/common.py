@@ -53,9 +53,10 @@ def all_datasets(path = None):
   ]).sort('name')
   return datasets
 def load_datasets(ad: pl.DataFrame, name: str) -> pl.DataFrame:
+  import sys
   filenames = ad.filter((pl.col('name') == name) | (pl.col('prefix') == name))['paths'].explode()
   prefix = "".join([list(x)[0] for x in itertools.takewhile(lambda x: len(x) == 1, map(set, zip(*filenames)))])
-  print("load", prefix, list(filenames.str.strip_prefix(prefix)))
+  print("load", prefix, list(filenames.str.strip_prefix(prefix)), file=sys.stderr)
   return load_files(filenames)
 
 # %%
