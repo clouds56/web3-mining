@@ -2,7 +2,6 @@
 
 pub mod rpc;
 pub mod metrics;
-pub mod migration;
 pub mod tasks;
 pub mod config;
 
@@ -12,11 +11,8 @@ use anyhow::Result;
 use config::Config;
 use ethers_providers::{JsonRpcClient, Middleware, Provider};
 use indexmap::IndexMap;
-use migration::StageMigration;
-use tasks::{RunConfig, RunEvent};
+use tasks::{uniswap::UniswapStage, RunConfig, RunEvent};
 use tracing_subscriber::fmt::format::FmtSpan;
-
-use crate::metrics::ToChecksumHex;
 
 async fn get_block_number<P: JsonRpcClient>(client: &Provider<P>) -> Result<u64> {
   let block_number = client.get_block_number().await?;
@@ -40,14 +36,9 @@ pub struct Stage {
   _cut: Option<u64>,
   #[serde(default)]
   block_metrics: Arc<AtomicU64>,
-  #[serde(default)]
-  uniswap_factory_events: Arc<AtomicU64>,
-  #[serde(default)]
-  uniswap3_factory_events: Arc<AtomicU64>,
-  #[serde(default)]
-  uniswap_pair_events: IndexMap<String, PairStage>,
-  #[serde(default)]
-  uniswap3_pair_events: IndexMap<String, PairStage>,
+
+  #[serde(flatten)]
+  uniswap: UniswapStage,
 }
 
 pub struct DatasetName<'a> {
@@ -90,11 +81,9 @@ impl<'a> DatasetName<'a> {
 
 fn load_stage<P: AsRef<Path>>(data_dir: P) -> Result<Stage> {
   let filename = data_dir.as_ref().join("stage.toml");
-  let mut stage: Stage = match std::fs::read_to_string(&filename) {
+  let stage: Stage = match std::fs::read_to_string(&filename) {
     Ok(content) => {
-      let stage = toml::from_str::<Stage>(&content)?;
-      let migration = toml::from_str::<StageMigration>(&content)?;
-      migration::migrate(data_dir.as_ref(), stage, migration)?
+      toml::from_str::<Stage>(&content)?
     }
     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
       info!(stage_file=%filename.display(), "stage file not found, using default");
@@ -102,17 +91,6 @@ fn load_stage<P: AsRef<Path>>(data_dir: P) -> Result<Stage> {
     }
     Err(e) => return Err(e)?,
   };
-
-  stage.uniswap_pair_events.entry("usdc_weth".to_string()).or_insert_with(|| PairStage {
-    contract: metrics::uniswap_v2::consts::CONTRACT_UniswapV2_USDC_WETH.to_checksum_hex(),
-    created: 10_000_000,
-    checkpoint: Arc::new(AtomicU64::new(0)),
-  });
-  stage.uniswap3_pair_events.entry("wbtc_weth".to_string()).or_insert_with(|| PairStage {
-    contract: metrics::uniswap_v3::consts::CONTRACT_UniswapV3_WBTC_WETH.to_checksum_hex(),
-    created: 12_000_000,
-    checkpoint: Arc::new(AtomicU64::new(0)),
-  });
   // save_stage(data_dir.as_ref(), &stage).ok();
 
   Ok(stage)
@@ -165,21 +143,15 @@ async fn main() -> Result<()> {
     default_event_listener(e);
   }).await?;
 
-  if checkpoint_is_none(&stage.uniswap_factory_events) {
-    stage.uniswap_factory_events.store(9_000_000, std::sync::atomic::Ordering::SeqCst);
-  }
-  RunConfig::new(&config, stage.uniswap_factory_events.clone(), "uniswap_factory_events", &|start, end|
+  RunConfig::new(&config, stage.uniswap.uniswap_factory_events.clone(), "uniswap_factory_events", &|start, end|
     metrics::uniswap_v2::fetch_uniswap_factory(&client, start, end)
   ).run(default_event_listener).await?;
 
-  if checkpoint_is_none(&stage.uniswap3_factory_events) {
-    stage.uniswap3_factory_events.store(11_000_000, std::sync::atomic::Ordering::SeqCst);
-  }
-  RunConfig::new(&config, stage.uniswap3_factory_events.clone(), "uniswap3_factory_events", &|start, end|
+  RunConfig::new(&config, stage.uniswap.uniswap3_factory_events.clone(), "uniswap3_factory_events", &|start, end|
     metrics::uniswap_v3::fetch_factory(&client, start, end)
   ).run(default_event_listener).await?;
 
-  for (name, pair) in &stage.uniswap_pair_events {
+  for (name, pair) in &stage.uniswap.uniswap_pair_events {
     if checkpoint_is_none(&pair.checkpoint) {
       pair.checkpoint.store(pair.created / config.cut * config.cut, std::sync::atomic::Ordering::SeqCst);
     }
@@ -189,7 +161,7 @@ async fn main() -> Result<()> {
     ).run(default_event_listener).await?;
   }
 
-  for (name, pair) in &stage.uniswap3_pair_events {
+  for (name, pair) in &stage.uniswap.uniswap3_pair_events {
     if checkpoint_is_none(&pair.checkpoint) {
       pair.checkpoint.store(pair.created / config.cut * config.cut, std::sync::atomic::Ordering::SeqCst);
     }

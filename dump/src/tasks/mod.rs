@@ -1,3 +1,5 @@
+pub mod uniswap;
+
 use std::{future::Future, path::Path, sync::{atomic::AtomicU64, Arc}};
 
 use polars::{frame::DataFrame, io::SerReader as _, prelude::{ParquetReader, ParquetWriter}};
