@@ -1,0 +1,15 @@
+[project]
+authors = ["Clouds Flowing <clouds.flowing@gmail.com>"]
+channels = ["conda-forge"]
+description = "Add a short description here"
+name = "web3_mining"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+polars = ">=1.6.0,<2"
+ipykernel = ">=6.29.5,<7"
+numpy = ">=2.1.1,<3"
+matplotlib = ">=3.9.2,<4"

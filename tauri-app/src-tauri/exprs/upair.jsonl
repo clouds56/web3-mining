@@ -4,4 +4,4 @@
 {"Agg":{"Last":{"Column":"reserve0"}}}
 {"Agg":{"Last":{"Column":"reserve1"}}}
 {"Agg":{"Last":{"Column":"value"}}}
-{"Alias":[{"Agg":{"Last":{"BinaryExpr":{"left":{"Function":{"input":[{"BinaryExpr":{"left":{"Column":"reserve0"},"op":"Multiply","right":{"Column":"reserve1"}}}],"function":{"Pow":"Sqrt"},"options":{"collect_groups":"ElementWise","fmt_str":"","input_wildcard_expansion":false,"returns_scalar":false,"cast_to_supertypes":false,"allow_rename":false,"pass_name_to_apply":false,"changes_length":false,"check_lengths":true,"allow_group_aware":true}}},"op":"TrueDivide","right":{"Column":"value"}}}}},"scale"]}
+{"Alias":[{"Agg":{"Last":{"BinaryExpr":{"left":{"Function":{"input":[{"BinaryExpr":{"left":{"Column":"reserve0"},"op":"Multiply","right":{"Column":"reserve1"}}}],"function":{"Pow":"Sqrt"},"options":{"collect_groups":"ElementWise","fmt_str":"","check_lengths":true,"flags":"ALLOW_GROUP_AWARE"}}},"op":"TrueDivide","right":{"Column":"value"}}}}},"scale"]}

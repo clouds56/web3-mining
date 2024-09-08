@@ -14,3 +14,8 @@ __pycache__
 *.parquet
 *.zip
 stage.toml
+
+# pixi environments
+.pixi
+*.egg-info
+pixi.lock

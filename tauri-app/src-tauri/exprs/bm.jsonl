@@ -1,5 +1,5 @@
 {"Alias":[{"Agg":{"Sum":{"Column":"total_eth"}}},"total_eth"]}
-{"Alias":[{"Agg":{"Sum":{"Cast":{"expr":{"Column":"tx_count"},"data_type":"UInt64","strict":true}}}},"tx_count"]}
+{"Alias":[{"Agg":{"Sum":{"Cast":{"expr":{"Column":"tx_count"},"data_type":"UInt64","options":"Strict"}}}},"tx_count"]}
 {"Alias":[{"Agg":{"Mean":{"Column":"total_fee"}}},"total_fee"]}
 {"Alias":[{"Agg":{"Mean":{"Column":"gas_used"}}},"gas_used"]}
 {"Alias":[{"Agg":{"Mean":{"Column":"fee_per_gas"}}},"fee_per_gas:mean"]}

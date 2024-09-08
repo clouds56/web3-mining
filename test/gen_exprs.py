@@ -1,20 +1,20 @@
 # %%
+import io
+from common import *
 import os
-from typing import List
-import itertools
 import polars as pl
-import matplotlib.pyplot as plt
 from pathlib import Path
-while not os.path.exists("Cargo.toml"):
-  os.chdir("../")
+
+enter_root_dir()
+
 FOLDER_EXPRS = "tauri-app/src-tauri/exprs"
 os.makedirs(FOLDER_EXPRS, exist_ok=True)
 
-def test_exprs(sample_file, exprs):
+def test_exprs(sample_file, exprs: list[pl.Expr] | str):
   if isinstance(exprs, str):
-    with open(f"{FOLDER_EXPRS}/{exprs}", "r") as f:
+    with open(exprs, "r") as f:
       expr_lines = f.readlines()
-    exprs = [pl.Expr.deserialize(x) for x in expr_lines]
+    exprs = [pl.Expr.deserialize(io.StringIO(x), format='json') for x in expr_lines]
   df = pl.read_parquet(Path('data').rglob(sample_file))
   if not 'timestamp' in df:
     df = df.with_columns([pl.col('height').alias('timestamp') * 15 + 1438269973])
@@ -22,13 +22,15 @@ def test_exprs(sample_file, exprs):
     .with_columns([(pl.col("timestamp") * 1000).cast(pl.Datetime("ms")).cast(pl.Date).alias("_date")])
     .group_by(["_date"]).agg(exprs))
   print(df.head())
-def save_jsonl(filename, exprs: "List[pl.Expr]", *, test_file=None):
-  expr_lines = [x.meta.serialize() for x in exprs]
+def save_jsonl(filename: str, exprs: "list[pl.Expr]", *, test_file=None):
+  expr_lines = [x.meta.serialize(format='json') for x in exprs]
   if test_file:
     test_exprs(test_file, exprs)
   with open(f"{FOLDER_EXPRS}/{filename}", "w") as f:
     for i in expr_lines:
       print(i, file=f)
+  if test_file:
+    test_exprs(test_file, f"{FOLDER_EXPRS}/{filename}")
 
 # %%
 save_jsonl("bm.jsonl", [
