@@ -3,15 +3,17 @@
 pub mod rpc;
 pub mod metrics;
 pub mod migration;
+pub mod tasks;
+pub mod config;
 
 use std::{path::Path, str::FromStr as _, sync::{atomic::AtomicU64, Arc}};
 
 use anyhow::Result;
+use config::Config;
 use ethers_providers::{JsonRpcClient, Middleware, Provider};
-use futures::Future;
 use indexmap::IndexMap;
 use migration::StageMigration;
-use polars::{frame::DataFrame, prelude::{ParquetReader, ParquetWriter}, io::SerReader};
+use tasks::{RunConfig, RunEvent};
 use tracing_subscriber::fmt::format::FmtSpan;
 
 use crate::metrics::ToChecksumHex;
@@ -37,46 +39,15 @@ fn checkpoint_is_none(data: &AtomicU64) -> bool {
 pub struct Stage {
   _cut: Option<u64>,
   #[serde(default)]
-  block_metrics: u64,
+  block_metrics: Arc<AtomicU64>,
   #[serde(default)]
-  uniswap_factory_events: u64,
+  uniswap_factory_events: Arc<AtomicU64>,
   #[serde(default)]
-  uniswap3_factory_events: u64,
+  uniswap3_factory_events: Arc<AtomicU64>,
   #[serde(default)]
   uniswap_pair_events: IndexMap<String, PairStage>,
   #[serde(default)]
   uniswap3_pair_events: IndexMap<String, PairStage>,
-}
-
-const DEFAULT_CUT: u64 = 1000000;
-/// A cut means 0..CUT, CUT..2*CUT, etc.
-/// which means block number 10000 is in a new file.
-/// just like what reth do.
-const fn next_cut(i: u64, cut: u64) -> u64 {
-  i / cut * cut + cut
-}
-
-pub trait Executor {
-  fn run(&self, start: u64, end: u64) -> impl Future<Output = Result<DataFrame>>;
-}
-#[allow(refining_impl_trait)]
-impl<Fut: Future<Output = Result<DataFrame>>, F: Fn(u64, u64) -> Fut > Executor for F {
-  fn run(&self, start: u64, end: u64) -> Fut {
-    self(start, end)
-  }
-}
-
-pub trait EventListener<E> {
-  fn on_event(&mut self, event: E) -> bool;
-}
-impl<E> EventListener<E> for () {
-  fn on_event(&mut self, _: E) -> bool {true}
-}
-impl<F: FnMut(E), E> EventListener<E> for F {
-  fn on_event(&mut self, event: E) -> bool {
-    self(event);
-    true
-  }
 }
 
 pub struct DatasetName<'a> {
@@ -114,62 +85,6 @@ impl<'a> DatasetName<'a> {
     let name = split.next()?;
     assert_eq!(split.next(), None);
     Some((Self { name, cut, idx }, rest))
-  }
-}
-
-pub struct RunConfig<'a, Fn: Executor> {
-  data_dir: &'a Path,
-  start: u64,
-  end: u64,
-  cut: u64,
-  name: &'a str,
-  executor: &'a Fn,
-}
-
-#[allow(unused)]
-pub struct RunEvent {
-  start: u64,
-  checkpoint: u64,
-  len: u64,
-  cut: u64,
-  end: u64,
-}
-
-macro_rules! is_break {
-  ($expr:expr) => {
-    if !$expr {
-      anyhow::bail!("break");
-    }
-  };
-}
-
-impl<'a, Fn: Executor> RunConfig<'a, Fn> {
-  async fn run(self, mut tracker: impl EventListener<RunEvent>) -> Result<()> {
-    let config = self;
-    let mut start = config.start;
-    let end = config.end;
-    let cut = config.cut;
-    is_break!(tracker.on_event(RunEvent { start, checkpoint: start, len: 0, cut, end }));
-    while start < end {
-      let checkpoint = next_cut(start, cut).min(end);
-      info!(config.start, config.end, config.name, "running for {}..{}", start, checkpoint);
-      if start < checkpoint {
-        let tmp_filename = config.data_dir.join(format!("{}_{}.{}.parquet.tmp", config.name, cut, start/cut));
-        // metrics::block::fetch_blocks(client, start, checkpoint).await?;
-        let mut df = config.executor.run(start, checkpoint).await?;
-        if start % cut != 0 {
-          let old_file = std::fs::File::open(tmp_filename.with_extension(""))?;
-          let old_df = ParquetReader::new(old_file).finish()?;
-          df = old_df.vstack(&df)?;
-        }
-        let file = std::fs::File::create(&tmp_filename)?;
-        ParquetWriter::new(file).finish(&mut df)?;
-        is_break!(tracker.on_event(RunEvent { start, checkpoint, len: df.shape().0 as u64, cut, end }));
-        std::fs::rename(&tmp_filename, tmp_filename.with_extension(""))?;
-      }
-      start = checkpoint;
-    }
-    Ok(())
   }
 }
 
@@ -218,98 +133,72 @@ async fn main() -> Result<()> {
     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
     .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
     .init();
-  let endpoint = format!("http://{}", std::env::var("RETH_HTTP_RPC").as_deref().unwrap_or("127.0.0.1:8545"));
-  info!(cwd=%std::env::current_dir().unwrap().display(), endpoint);
-  let data_dir = std::env::var("DATA_DIR").unwrap_or("data".to_string());
-  std::fs::create_dir_all(&data_dir)?;
-  let client = Provider::new(ethers_providers::Http::from_str(&endpoint)?);
+  let mut config = Config::from_env();
+  info!(cwd=%std::env::current_dir().unwrap().display(), config.endpoint);
+  std::fs::create_dir_all(&config.data_dir)?;
+  let client = Provider::new(ethers_providers::Http::from_str(&config.endpoint)?);
   let block_length = get_block_number(&client).await?;
   info!(block_length, "hello");
 
-  let mut stage = load_stage(&data_dir)?;
-  let cut = stage._cut.unwrap_or(DEFAULT_CUT);
-  stage._cut = Some(cut);
+  let mut stage = load_stage(&config.data_dir)?;
+  if let Some(cut) = stage._cut {
+    config.cut = cut
+  } else {
+    stage._cut = Some(config.cut);
+  }
   info!(?stage);
+
+  let default_event_listener = |_: RunEvent| {
+    save_stage(&config.data_dir, &stage).ok();
+  };
 
   // let magic_number = 98672723;
   // let block_length = magic_number * (stage.block_metrics + 1) % (10 * DEFAULT_CUT) + stage.block_metrics;
   // info!(block_length, "faking");
-  RunConfig {
-    data_dir: data_dir.as_ref(),
-    start: stage.block_metrics,
-    end: block_length,
-    cut,
-    name: "block_metrics",
-    executor: &|start, end| metrics::block::fetch_blocks(&client, start, end),
-  }.run(|e: RunEvent| {
+  RunConfig::new(&config, stage.block_metrics.clone(), "block_metrics", &|start, end|
+    metrics::block::fetch_blocks(&client, start, end)
+  ).run(|e: RunEvent| {
     assert_eq!(Some(e.cut), stage._cut);
     if e.len > 0 {
-      assert_eq!(e.len, e.checkpoint - e.start + e.start % cut);
+      assert_eq!(e.len, e.checkpoint - e.start + e.start % e.cut);
     }
-    stage.block_metrics = e.checkpoint;
-    save_stage(&data_dir, &stage).ok();
+    default_event_listener(e);
   }).await?;
 
-  RunConfig {
-    data_dir: data_dir.as_ref(),
-    start: stage.uniswap_factory_events.max(9_000_000),
-    end: block_length,
-    cut,
-    name: "uniswap_factory_events",
-    executor: &|start, end| metrics::uniswap_v2::fetch_uniswap_factory(&client, start, end),
-  }.run(|e: RunEvent| {
-    stage.uniswap_factory_events = e.checkpoint;
-    save_stage(&data_dir, &stage).ok();
-  }).await?;
+  if checkpoint_is_none(&stage.uniswap_factory_events) {
+    stage.uniswap_factory_events.store(9_000_000, std::sync::atomic::Ordering::SeqCst);
+  }
+  RunConfig::new(&config, stage.uniswap_factory_events.clone(), "uniswap_factory_events", &|start, end|
+    metrics::uniswap_v2::fetch_uniswap_factory(&client, start, end)
+  ).run(default_event_listener).await?;
 
-  RunConfig {
-    data_dir: data_dir.as_ref(),
-    start: stage.uniswap3_factory_events.max(11_000_000),
-    end: block_length,
-    cut,
-    name: "uniswap3_factory_events",
-    executor: &|start, end| metrics::uniswap_v3::fetch_factory(&client, start, end),
-  }.run(|e: RunEvent| {
-    stage.uniswap3_factory_events = e.checkpoint;
-    save_stage(&data_dir, &stage).ok();
-  }).await?;
+  if checkpoint_is_none(&stage.uniswap3_factory_events) {
+    stage.uniswap3_factory_events.store(11_000_000, std::sync::atomic::Ordering::SeqCst);
+  }
+  RunConfig::new(&config, stage.uniswap3_factory_events.clone(), "uniswap3_factory_events", &|start, end|
+    metrics::uniswap_v3::fetch_factory(&client, start, end)
+  ).run(default_event_listener).await?;
 
   for (name, pair) in &stage.uniswap_pair_events {
     if checkpoint_is_none(&pair.checkpoint) {
-      pair.checkpoint.store(pair.created / cut * cut, std::sync::atomic::Ordering::SeqCst);
+      pair.checkpoint.store(pair.created / config.cut * config.cut, std::sync::atomic::Ordering::SeqCst);
     }
     let contract = pair.contract.parse().unwrap();
-    RunConfig {
-      data_dir: data_dir.as_ref(),
-      start: pair.checkpoint.load(std::sync::atomic::Ordering::SeqCst),
-      end: block_length,
-      cut,
-      name: &format!("uniswap_pair_events_{}", name),
-      executor: &|start, end| metrics::uniswap_v2::fetch_uniswap_pair(&client, start, end, contract),
-    }.run(|e: RunEvent| {
-      pair.checkpoint.store(e.checkpoint, std::sync::atomic::Ordering::SeqCst);
-      save_stage(&data_dir, &stage).ok();
-    }).await?;
+    RunConfig::new(&config, pair.checkpoint.clone(), &format!("uniswap_pair_events_{}", name), &|start, end|
+      metrics::uniswap_v2::fetch_uniswap_pair(&client, start, end, contract)
+    ).run(default_event_listener).await?;
   }
 
   for (name, pair) in &stage.uniswap3_pair_events {
     if checkpoint_is_none(&pair.checkpoint) {
-      pair.checkpoint.store(pair.created / cut * cut, std::sync::atomic::Ordering::SeqCst);
+      pair.checkpoint.store(pair.created / config.cut * config.cut, std::sync::atomic::Ordering::SeqCst);
     }
     let contract = pair.contract.parse().unwrap();
-    RunConfig {
-      data_dir: data_dir.as_ref(),
-      start: pair.checkpoint.load(std::sync::atomic::Ordering::SeqCst),
-      end: block_length,
-      cut,
-      name: &format!("uniswap3_pair_events_{}", name),
-      executor: &|start, end| metrics::uniswap_v3::fetch_uniswap_pair(&client, start, end, contract),
-    }.run(|e: RunEvent| {
-      pair.checkpoint.store(e.checkpoint, std::sync::atomic::Ordering::SeqCst);
-      save_stage(&data_dir, &stage).ok();
-    }).await?;
+    RunConfig::new(&config, pair.checkpoint.clone(), &format!("uniswap3_pair_events_{}", name), &|start, end|
+      metrics::uniswap_v3::fetch_uniswap_pair(&client, start, end, contract)
+    ).run(default_event_listener).await?;
   }
 
-  save_stage(&data_dir, &stage)?;
+  save_stage(&config.data_dir, &stage)?;
   Ok(())
 }

@@ -62,10 +62,10 @@ fn rename_prefix<P: AsRef<Path>>(data_dir: P, from: &str, to: &str) -> Result<us
 pub fn migrate<P: AsRef<Path>>(data_dir: P, mut stage: Stage, migration: StageMigration) -> Result<Stage> {
   let data_dir = data_dir.as_ref();
   if let Some(uniswap_factory) = migration.uniswap_factory {
-    if uniswap_factory > stage.uniswap_factory_events {
+    if uniswap_factory > stage.uniswap_factory_events.load(std::sync::atomic::Ordering::SeqCst) {
       rename_prefix(data_dir, "uniswap_factory_", "uniswap_factory_events_")?;
     }
-    stage.uniswap_factory_events = uniswap_factory;
+    stage.uniswap_factory_events.store(uniswap_factory, std::sync::atomic::Ordering::SeqCst);
     save_stage(data_dir, &stage)?;
   }
   if let Some(uniswap_pair) = migration.uniswap_pair {
