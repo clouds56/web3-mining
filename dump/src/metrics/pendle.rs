@@ -1,9 +1,11 @@
+use std::sync::Arc;
+
 use anyhow::{bail, Result};
 use ethers_core::types::{Address, H256, I256, U256};
 use ethers_providers::Middleware;
 use polars::{frame::DataFrame, prelude::NamedFrom as _, series::Series};
 
-use crate::rpc;
+use crate::rpc::{self, contract::PendleAssetType};
 
 use super::{event::LogMetric, ToChecksumHex, ToHex};
 
@@ -41,11 +43,20 @@ pub struct Log_CreateNewMarket {
   pub block_index: u64,
   pub contract: Address,
   pub tx_hash: H256,
-  pub pt_address: Address,
   pub market_address: Address,
-  pub scala_root: I256,
-  pub initial_anchor: I256,
+  pub scala: I256,
+  pub anchor: I256,
   pub fee_rate: U256,
+
+  pub expiry: Option<u64>,
+  pub reward_tokens: Option<Vec<Address>>,
+  /// or sy_address
+  pub tt_address: Option<Address>,
+  pub pt_address: Address,
+  pub rt_address: Option<Address>,
+  pub at_type: Option<PendleAssetType>,
+  pub at_address: Option<Address>,
+  pub at_decimal: Option<u8>,
 }
 
 impl TryFrom<LogMetric> for Log_CreateNewMarket {
@@ -58,9 +69,16 @@ impl TryFrom<LogMetric> for Log_CreateNewMarket {
       tx_hash: log.tx_hash.parse().unwrap(),
       market_address: log.topic1()?.as_address()?,
       pt_address: log.topic2()?.as_address()?,
-      scala_root: log.get_arg(0)?.as_i256(),
-      initial_anchor: log.get_arg(1)?.as_i256(),
+      scala: log.get_arg(0)?.as_i256(),
+      anchor: log.get_arg(1)?.as_i256(),
       fee_rate: log.get_arg(2)?.as_u256(),
+      expiry: None,
+      reward_tokens: None,
+      tt_address: None,
+      rt_address: None,
+      at_type: None,
+      at_address: None,
+      at_decimal: None,
     };
     Ok(result)
   }
@@ -75,21 +93,48 @@ impl Log_CreateNewMarket {
       Series::new("tx_hash", log_metrics.iter().map(|i| i.tx_hash.to_hex()).collect::<Vec<_>>()),
       Series::new("pt_address", log_metrics.iter().map(|i| i.pt_address.to_checksum_hex()).collect::<Vec<_>>()),
       Series::new("market_address", log_metrics.iter().map(|i| i.market_address.to_checksum_hex()).collect::<Vec<_>>()),
-      Series::new("scala_root", log_metrics.iter().map(|i| i.scala_root.as_i128() as f64).collect::<Vec<_>>()),
-      Series::new("initial_anchor", log_metrics.iter().map(|i| i.initial_anchor.as_i128() as f64).collect::<Vec<_>>()),
-      Series::new("fee_rate", log_metrics.iter().map(|i| i.fee_rate.as_u128() as f64).collect::<Vec<_>>()),
+      Series::new("scala", log_metrics.iter().map(|i| i.scala.as_i128() as f64 * 1e-18).collect::<Vec<_>>()),
+      Series::new("anchor", log_metrics.iter().map(|i| i.anchor.as_i128() as f64 * 1e-18).collect::<Vec<_>>()),
+      Series::new("fee_rate", log_metrics.iter().map(|i| i.fee_rate.as_u128() as f64 * 1e-18).collect::<Vec<_>>()),
+      Series::new("expiry", log_metrics.iter().map(|i| i.expiry.map(|i| i as u64)).collect::<Vec<_>>()),
+      Series::new("reward_tokens", log_metrics.iter().map(|i|
+        i.reward_tokens.as_ref().map(|i| i.into_iter().map(|j| j.to_checksum_hex()).collect::<Series>())
+      ).collect::<Vec<_>>()),
+      Series::new("tt_address", log_metrics.iter().map(|i| i.tt_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
+      Series::new("rt_address", log_metrics.iter().map(|i| i.rt_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
+      Series::new("at_type", log_metrics.iter().map(|i| i.at_type.map(|i| format!("{:?}", i))).collect::<Vec<_>>()),
+      Series::new("at_address", log_metrics.iter().map(|i| i.at_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
+      Series::new("at_decimal", log_metrics.iter().map(|i| i.at_decimal.map(|i| i as u32)).collect::<Vec<_>>()),
     ])?;
     Ok(df)
   }
 }
 
-pub async fn fetch_pendle_market_factory<P: Middleware>(client: P, height_from: u64, height_to: u64) -> Result<DataFrame>
+pub async fn fetch_pendle_market_factory<P: Middleware + 'static>(client: P, height_from: u64, height_to: u64) -> Result<DataFrame>
 where P::Error: 'static {
   const PAGE_SIZE: u64 = 10000;
-  let logs = rpc::eth::get_logs(client, Some(consts::TOPIC_CreateNewMarket.clone()), None, height_from..height_to, PAGE_SIZE).await?;
+  let client = Arc::new(client);
+  let logs = rpc::eth::get_logs(client.clone(), Some(consts::TOPIC_CreateNewMarket.clone()), None, height_from..height_to, PAGE_SIZE).await?;
   debug!(logs.len=?logs.len(), height_from, height_to);
-  let logs = logs.into_iter().map(LogMetric::from).filter_map(|i| Log_CreateNewMarket::try_from(i).ok()).collect::<Vec<_>>();
-  let df = Log_CreateNewMarket::to_df(&logs)?;
+  let mut result = Vec::with_capacity(logs.len());
+  for log in logs {
+    let Ok(log) = Log_CreateNewMarket::try_from(LogMetric::from(log)) else {
+      continue
+    };
+    let info = rpc::contract::get_pendle_market_info(client.clone(), log.market_address).await?;
+    let log = Log_CreateNewMarket {
+      expiry: Some(info.expiry),
+      reward_tokens: Some(info.reward_tokens),
+      tt_address: Some(info.tt_address),
+      rt_address: Some(info.rt_address),
+      at_type: Some(info.at_type),
+      at_address: Some(info.at_address),
+      at_decimal: Some(info.at_decimal),
+      ..log
+    };
+    result.push(log);
+  }
+  let df = Log_CreateNewMarket::to_df(&result)?;
   debug!("{}", df.head(None));
   Ok(df)
 }

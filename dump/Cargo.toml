@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.81"
 dotenvy = "0.15.7"
+ethers-contract = "2.0.14"
 ethers-core = "2.0.14"
 ethers-providers = "2.0.14"
 futures = "0.3.30"
