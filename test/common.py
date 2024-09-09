@@ -52,12 +52,20 @@ def all_datasets(path = None):
       .alias('name')
   ]).sort('name')
   return datasets
-def load_datasets(ad: pl.DataFrame, name: str) -> pl.DataFrame:
+def load_datasets(ad: pl.DataFrame, name: str, *, with_timestamp = False) -> pl.DataFrame:
   import sys
   filenames = ad.filter((pl.col('name') == name) | (pl.col('prefix') == name))['paths'].explode()
   prefix = "".join([list(x)[0] for x in itertools.takewhile(lambda x: len(x) == 1, map(set, zip(*filenames)))])
   print("load", prefix, list(filenames.str.strip_prefix(prefix)), file=sys.stderr)
-  return load_files(filenames)
+  df = load_files(filenames)
+  if with_timestamp:
+    dfb = load_datasets(ad, f"block_metrics")
+    df = df.join(
+      dfb.select('height', 'timestamp'), on='height', how='left'
+    ).with_columns(
+      datetime = pl.from_epoch(pl.col('timestamp'), time_unit='s'),
+    )
+  return df
 
 # %%
 import numpy as np

@@ -67,7 +67,38 @@ created = {row['height']}
   """.strip() + '\n')
 
 # %%
-df = load_datasets(ad, "pendle2_market_factory_events")
-df
+import math
+def trim_pt_name(s: str):
+  return "-".join(s.split("-")[1:-1])
+df = load_datasets(ad, "pendle2_market_factory_events", with_timestamp=True)
+df = df.with_columns(
+  time_to_expiry = (pl.col('expiry') - pl.col('timestamp')) / 86400.0,
+).with_columns(
+  scalar = pl.col('scalar') * 365. / pl.col('time_to_expiry'),
+).with_columns(
+  max_rate = pl.col('anchor') + math.log(9) / pl.col('scalar'),
+  min_rate = pl.col('anchor') - math.log(9) / pl.col('scalar'),
+).with_columns(
+  min_apy = pl.col('min_rate') ** (365 / pl.col('time_to_expiry')),
+  expected_apy = pl.col('anchor') ** (365 / pl.col('time_to_expiry')),
+  max_apy = pl.col('max_rate') ** (365 / pl.col('time_to_expiry')),
+).with_columns(
+  token_str = pl.col('pt_name').map_elements(trim_pt_name, return_dtype=pl.String),
+  expiry_str = pl.from_epoch(pl.col('expiry')).cast(pl.Date).cast(pl.String).str.replace_all('-', ''),
+  min_apy_str = ((pl.col('min_apy') - 1) * 1000).round().cast(pl.Int64).cast(pl.String),
+  max_apy_str = ((pl.col('max_apy') - 1) * 1000).round().cast(pl.Int64).cast(pl.String),
+  fee_rate_str = (pl.col('fee_rate') * 10000).round().cast(pl.Int64).cast(pl.String),
+).with_columns(
+  name = pl.col('token_str') + "_" + pl.col('expiry_str') + "_" + pl.col('min_apy_str') + "_" + pl.col('max_apy_str') + "_" + pl.col('fee_rate_str'),
+).drop(['token_str', 'expiry_str', 'min_apy_str', 'max_apy_str', 'fee_rate_str']).filter(
+  pl.col('name').is_not_null()
+).join(toml_to_df(stage, 'pendle2_market_events'), on="name", how='anti')
+print("# Pendle V2 Markets:", len(df))
+for row in df.rows(named=True):
+  print(f"""
+[pendle2_market_events.{row['name']}]
+contract = "{row['contract']}"
+created = {row['height']}
+  """.strip() + '\n')
 
 # %%
