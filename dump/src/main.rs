@@ -104,7 +104,7 @@ async fn main() -> Result<()> {
   let mut config = Config::from_env();
   info!(cwd=%std::env::current_dir().unwrap().display(), config.endpoint);
   std::fs::create_dir_all(&config.data_dir)?;
-  let client = Provider::new(ethers_providers::Http::from_str(&config.endpoint)?);
+  let client = Arc::new(Provider::new(ethers_providers::Http::from_str(&config.endpoint)?));
   config.block_length = get_block_number(&client).await?;
   info!(config.block_length, "hello");
 
@@ -124,7 +124,7 @@ async fn main() -> Result<()> {
   // let block_length = magic_number * (stage.block_metrics + 1) % (10 * DEFAULT_CUT) + stage.block_metrics;
   // info!(block_length, "faking");
   RunConfig::new(&config, stage.block_metrics.clone(), "block_metrics", &|start, end|
-    metrics::block::fetch_blocks(&client, start, end)
+    metrics::block::fetch_blocks(client.clone(), start, end)
   ).run(|e: RunEvent| {
     assert_eq!(Some(e.cut), stage._cut);
     if e.len > 0 {
@@ -133,8 +133,8 @@ async fn main() -> Result<()> {
     default_event_listener(e);
   }).await?;
 
-  stage.uniswap.run_tasks(&client, &config, default_event_listener).await?;
-  stage.pendle.run_tasks(&client, &config, default_event_listener).await?;
+  stage.uniswap.run_tasks(client.clone(), &config, default_event_listener).await?;
+  stage.pendle.run_tasks(client.clone(), &config, default_event_listener).await?;
 
   save_stage(&config.data_dir, &stage)?;
   Ok(())

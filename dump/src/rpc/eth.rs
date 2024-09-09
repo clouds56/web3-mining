@@ -9,8 +9,7 @@ use tokio::sync::Mutex;
 use crate::metrics::block::BlockMetric;
 
 #[tracing::instrument(level = "debug", skip_all, fields(height_range=format!("{}..{}", height_range.start, height_range.end)))]
-pub async fn get_blocks<P: Middleware>(client: P, height_range: Range<u64>) -> Result<Vec<BlockMetric>>
-where <P as Middleware>::Error: 'static {
+pub async fn get_blocks<P: Middleware>(client: P, height_range: Range<u64>) -> Result<Vec<BlockMetric>> {
   let result = Arc::new(Mutex::new(vec![BlockMetric::default(); height_range.clone().count()]));
   let height_start = height_range.start;
   stream::iter(height_range).for_each_concurrent(500, |i| {

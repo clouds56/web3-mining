@@ -30,16 +30,16 @@ impl PendleStage {
     Arc::new(AtomicU64::new(18_000_000))
   }
 
-  pub async fn run_tasks<P: Middleware>(&self, client: &P, config: &Config, default_event_listener: impl EventListener<RunEvent> + Copy) -> crate::Result<()> {
+  pub async fn run_tasks<P: Middleware>(&self, client: Arc<P>, config: &Config, default_event_listener: impl EventListener<RunEvent> + Copy) -> crate::Result<()> {
     RunConfig::new(&config, self.pendle2_market_factory_events.clone(), "pendle2_market_factory_events", &|start, end|
-      metrics::pendle::fetch_pendle_market_factory(&client, start, end)
+      metrics::pendle::fetch_pendle_market_factory(client.clone(), start, end)
     ).run(default_event_listener).await?;
 
     for (name, market) in &self.pendle2_market_events {
       market.init_checkpoint(config.cut);
       let contract = market.contract.parse().unwrap();
       RunConfig::new(&config, market.checkpoint.clone(), &format!("pendle2_market_events_{}", name), &|start, end|
-        metrics::pendle::fetch_pendle_market(&client, start, end, contract)
+        metrics::pendle::fetch_pendle_market(client.clone(), start, end, contract)
       ).run(default_event_listener).await?;
     }
 

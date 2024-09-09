@@ -78,12 +78,10 @@ impl Log_CreatePair {
   }
 }
 
-pub async fn fetch_uniswap_factory<P: Middleware>(client: &P, height_from: u64, height_to: u64) -> Result<DataFrame>
-where
-  P::Error: 'static
-{
+pub async fn fetch_uniswap_factory<P: Middleware>(client: P, height_from: u64, height_to: u64) -> Result<DataFrame>
+where P::Error: 'static {
   const PAGE_SIZE: u64 = 10000;
-  let logs = rpc::get_logs(client, Some(consts::TOPIC_PairCreated.clone()), None, height_from..height_to, PAGE_SIZE).await?;
+  let logs = rpc::eth::get_logs(client, Some(consts::TOPIC_PairCreated.clone()), None, height_from..height_to, PAGE_SIZE).await?;
   debug!(logs.len=?logs.len(), height_from, height_to);
   let logs = logs.into_iter().map(LogMetric::from).filter_map(|i| Log_CreatePair::try_from(i).ok()).collect::<Vec<_>>();
   let df = Log_CreatePair::to_df(&logs)?;
@@ -223,12 +221,9 @@ impl Log_Pair {
   }
 }
 
-pub async fn fetch_uniswap_pair<P: Middleware>(client: &P, height_from: u64, height_to: u64, pair: Address) -> Result<DataFrame>
-where
-  P::Error: 'static
-{
+pub async fn fetch_uniswap_pair<P: Middleware + 'static>(client: P, height_from: u64, height_to: u64, pair: Address) -> Result<DataFrame> {
   const PAGE_SIZE: u64 = 2000;
-  let logs = rpc::get_logs(client, None, Some(pair), height_from..height_to, PAGE_SIZE).await?;
+  let logs = rpc::eth::get_logs(client, None, Some(pair), height_from..height_to, PAGE_SIZE).await?;
   debug!(logs.len=?logs.len(), height_from, height_to);
   let logs = logs.into_iter().filter(|i| i.removed != Some(true)).map(LogMetric::from).filter_map(|i| Log_Pair::try_from(i).ok()).collect::<Vec<_>>();
   let df = Log_Pair::to_df(&logs)?;
