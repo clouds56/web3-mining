@@ -105,8 +105,8 @@ async fn main() -> Result<()> {
   info!(cwd=%std::env::current_dir().unwrap().display(), config.endpoint);
   std::fs::create_dir_all(&config.data_dir)?;
   let client = Provider::new(ethers_providers::Http::from_str(&config.endpoint)?);
-  let block_length = get_block_number(&client).await?;
-  info!(block_length, "hello");
+  config.block_length = get_block_number(&client).await?;
+  info!(config.block_length, "hello");
 
   let mut stage = load_stage(&config.data_dir)?;
   if let Some(cut) = stage._cut {

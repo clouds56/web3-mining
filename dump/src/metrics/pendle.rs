@@ -176,7 +176,7 @@ impl TryFrom<LogMetric> for Log_Market {
       },
       // UpdateImpliedRate (index_topic_1 uint256 timestamp, uint256 lnLastImpliedRate)
       Pair_ActionType::Rate => {
-        result.ln_fee_rate = Some(log.get_arg(1)?.as_i128());
+        result.ln_fee_rate = Some(log.get_arg(0)?.as_i128());
       },
       // Burn (index_topic_1 address receiverSy, index_topic_2 address receiverPt, uint256 netLpBurned, uint256 netSyOut, uint256 netPtOut)
       Pair_ActionType::Burn => {

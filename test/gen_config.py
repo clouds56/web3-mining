@@ -67,3 +67,7 @@ created = {row['height']}
   """.strip() + '\n')
 
 # %%
+df = load_datasets(ad, "pendle2_market_factory_events")
+df
+
+# %%
