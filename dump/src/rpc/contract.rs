@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use base::IERC20;
 use ethers_core::types::Address;
 use ethers_providers::Middleware;
 
@@ -11,6 +12,10 @@ pub mod base {
   abigen!(
     IERC20,
     r#"[
+      function name() external view returns (string)
+      function symbol() external view returns (string)
+      function decimals() external view returns (uint8)
+
       function totalSupply() external view returns (uint256)
       function balanceOf(address account) external view returns (uint256)
       function transfer(address recipient, uint256 amount) external returns (bool)
@@ -52,9 +57,8 @@ pub struct PendleMarketInfo {
   pub tt_address: Address,
   pub pt_address: Address,
   pub rt_address: Address,
-  pub at_type: PendleAssetType,
-  pub at_address: Address,
-  pub at_decimal: u8,
+  pub pt_name: String,
+  pub st_address: Address,
 }
 
 pub async fn get_pendle_market_info<P: Middleware + 'static>(client: Arc<P>, market_address: Address) -> Result<PendleMarketInfo> {
@@ -63,15 +67,16 @@ pub async fn get_pendle_market_info<P: Middleware + 'static>(client: Arc<P>, mar
   let reward_tokens = market.get_reward_tokens().await?;
   let (tt, pt, rt) = market.read_tokens().await?;
   let tt_contract = IPendleYield::new(tt, client.clone());
-  let (at_type, at_address, at_decimal) = tt_contract.asset_info().call().await?;
+  let st_address = tt_contract.yield_token().call().await?;
+  let pt_contract = IERC20::new(pt, client);
+  let pt_name = pt_contract.symbol().call().await?;
   Ok(PendleMarketInfo {
     expiry,
     reward_tokens,
     tt_address: tt,
     pt_address: pt,
+    pt_name,
     rt_address: rt,
-    at_type: PendleAssetType::try_from(at_type).map_err(|e| anyhow::format_err!("unknown at_type {}", e))?,
-    at_address,
-    at_decimal,
+    st_address
   })
 }

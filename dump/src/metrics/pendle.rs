@@ -5,7 +5,7 @@ use ethers_core::types::{Address, H256, I256, U256};
 use ethers_providers::Middleware;
 use polars::{frame::DataFrame, prelude::NamedFrom as _, series::Series};
 
-use crate::rpc::{self, contract::PendleAssetType};
+use crate::rpc;
 
 use super::{event::LogMetric, ToChecksumHex, ToHex};
 
@@ -44,7 +44,7 @@ pub struct Log_CreateNewMarket {
   pub contract: Address,
   pub tx_hash: H256,
   pub market_address: Address,
-  pub scala: I256,
+  pub scalar: I256,
   pub anchor: I256,
   pub fee_rate: U256,
 
@@ -54,9 +54,8 @@ pub struct Log_CreateNewMarket {
   pub tt_address: Option<Address>,
   pub pt_address: Address,
   pub rt_address: Option<Address>,
-  pub at_type: Option<PendleAssetType>,
-  pub at_address: Option<Address>,
-  pub at_decimal: Option<u8>,
+  pub pt_name: Option<String>,
+  pub st_address: Option<Address>,
 }
 
 impl TryFrom<LogMetric> for Log_CreateNewMarket {
@@ -69,16 +68,15 @@ impl TryFrom<LogMetric> for Log_CreateNewMarket {
       tx_hash: log.tx_hash.parse().unwrap(),
       market_address: log.topic1()?.as_address()?,
       pt_address: log.topic2()?.as_address()?,
-      scala: log.get_arg(0)?.as_i256(),
+      scalar: log.get_arg(0)?.as_i256(),
       anchor: log.get_arg(1)?.as_i256(),
       fee_rate: log.get_arg(2)?.as_u256(),
       expiry: None,
       reward_tokens: None,
       tt_address: None,
       rt_address: None,
-      at_type: None,
-      at_address: None,
-      at_decimal: None,
+      pt_name: None,
+      st_address: None,
     };
     Ok(result)
   }
@@ -93,7 +91,7 @@ impl Log_CreateNewMarket {
       Series::new("tx_hash", log_metrics.iter().map(|i| i.tx_hash.to_hex()).collect::<Vec<_>>()),
       Series::new("pt_address", log_metrics.iter().map(|i| i.pt_address.to_checksum_hex()).collect::<Vec<_>>()),
       Series::new("market_address", log_metrics.iter().map(|i| i.market_address.to_checksum_hex()).collect::<Vec<_>>()),
-      Series::new("scala", log_metrics.iter().map(|i| i.scala.as_i128() as f64 * 1e-18).collect::<Vec<_>>()),
+      Series::new("scalar", log_metrics.iter().map(|i| i.scalar.as_i128() as f64 * 1e-18).collect::<Vec<_>>()),
       Series::new("anchor", log_metrics.iter().map(|i| i.anchor.as_i128() as f64 * 1e-18).collect::<Vec<_>>()),
       Series::new("fee_rate", log_metrics.iter().map(|i| i.fee_rate.as_u128() as f64 * 1e-18).collect::<Vec<_>>()),
       Series::new("expiry", log_metrics.iter().map(|i| i.expiry.map(|i| i as u64)).collect::<Vec<_>>()),
@@ -102,9 +100,8 @@ impl Log_CreateNewMarket {
       ).collect::<Vec<_>>()),
       Series::new("tt_address", log_metrics.iter().map(|i| i.tt_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
       Series::new("rt_address", log_metrics.iter().map(|i| i.rt_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
-      Series::new("at_type", log_metrics.iter().map(|i| i.at_type.map(|i| format!("{:?}", i))).collect::<Vec<_>>()),
-      Series::new("at_address", log_metrics.iter().map(|i| i.at_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
-      Series::new("at_decimal", log_metrics.iter().map(|i| i.at_decimal.map(|i| i as u32)).collect::<Vec<_>>()),
+      Series::new("pt_name", log_metrics.iter().map(|i| i.pt_name.clone()).collect::<Vec<_>>()),
+      Series::new("st_address", log_metrics.iter().map(|i| i.st_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
     ])?;
     Ok(df)
   }
@@ -119,18 +116,23 @@ where P::Error: 'static {
   let mut result = Vec::with_capacity(logs.len());
   for log in logs {
     let Ok(log) = Log_CreateNewMarket::try_from(LogMetric::from(log)) else {
+      error!("failed convert market info");
       continue
     };
-    let info = rpc::contract::get_pendle_market_info(client.clone(), log.market_address).await?;
-    let log = Log_CreateNewMarket {
-      expiry: Some(info.expiry),
-      reward_tokens: Some(info.reward_tokens),
-      tt_address: Some(info.tt_address),
-      rt_address: Some(info.rt_address),
-      at_type: Some(info.at_type),
-      at_address: Some(info.at_address),
-      at_decimal: Some(info.at_decimal),
-      ..log
+    let log = match rpc::contract::get_pendle_market_info(client.clone(), log.market_address).await {
+      Ok(info) => Log_CreateNewMarket {
+        expiry: Some(info.expiry),
+        reward_tokens: Some(info.reward_tokens),
+        tt_address: Some(info.tt_address),
+        rt_address: Some(info.rt_address),
+        pt_name: Some(info.pt_name),
+        st_address: Some(info.st_address),
+        ..log
+      },
+      Err(e) => {
+        warn!(?log.market_address, ?e, "failed to fetch market info");
+        log
+      },
     };
     result.push(log);
   }
