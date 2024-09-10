@@ -96,7 +96,7 @@ df = df.with_columns(
 print("# Pendle V2 Markets:", len(df))
 for row in df.rows(named=True):
   print(f"""
-[pendle2_market_events.{row['name']}]
+[pendle2_market_events.{row['name'].replace('+', 'p')}]
 contract = "{row['contract']}"
 created = {row['height']}
   """.strip() + '\n')
