@@ -11,8 +11,11 @@ with open('data/stage.toml', 'rb') as f:
   stage = tomllib.load(f)
 
 def toml_to_df(obj: dict, tag: str):
-  data = [{'name': k} | v for k, v in obj.get(tag, {"_": {}}).items()]
-  return pl.DataFrame(data)
+  data = [{'name': k} | v for k, v in obj.get(tag, {}).items()]
+  df = pl.DataFrame(data)
+  if len(df) == 0:
+    df = pl.DataFrame(schema=[('name', pl.String)])
+  return df
 stage
 
 # %%
