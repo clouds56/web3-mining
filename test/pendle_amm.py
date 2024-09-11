@@ -13,23 +13,33 @@ ad = all_datasets()
 dfb = load_datasets(ad, f"block_metrics")
 
 # %%
-df = load_datasets(ad, f"uniswap_pair_block_{pair}").join(
-  dfb.select('height', 'timestamp'), on='height',
-)
+df = load_datasets(ad, f"uniswap_pair_block_{pair}", with_timestamp=True)
 df = df.with_columns(
-  datetime = pl.from_epoch(df['timestamp'], time_unit='s'),
   fee_index = (df['reserve0'] * df['reserve1']).sqrt() / df['value'],
   price = df['reserve0'] / df['reserve1'],
 ).sort('height')
 plotting(df, 'price', 'fee_index')
 
 # %%
-window = 7 * 86400
-last_index = df.select(index = pl.max_horizontal(pl.col('timestamp').search_sorted(pl.col('timestamp') - window, 'left'), 1) - 1)['index']
-df = df.with_columns(
-  rate = (1 + (df['fee_index'] - df[last_index]['fee_index'])) ** (1 / (df['timestamp'] - df[last_index]['timestamp'])) - 1,
-  sigma = df['price'].rolling_std(40000) ** 2,
+from polars._typing import IntoExpr as pl_IntoExpr
+def diff_with_window(df: pl.DataFrame, *columns: str, window = 7 * 86400, **named_exprs: pl_IntoExpr):
+  last_index = df.select(index = pl.max_horizontal(pl.col('timestamp').search_sorted(pl.col('timestamp') - window, 'left'), 1) - 1)['index']
+  if isinstance(columns[0], list):
+    columns = columns[0]
+  new_columns = [f"{i}.diff()" for i in columns]
+  column_exprs = [
+    (df[i] - df[last_index][i]).alias(j) for i, j in zip(columns, new_columns)
+  ]
+  df = df.with_columns(
+    *column_exprs
+  ).with_columns(
+    **named_exprs
+  ).drop(new_columns, strict=True)
+  return df
+df = diff_with_window(df.with_columns(fee_index_log = pl.col('fee_index').log()), ['fee_index_log', 'timestamp'], window=7 * 86400,
+  rate = (1 + pl.col('fee_index_log.diff()')) ** (1 / pl.col('timestamp.diff()')) - 1,
 ).with_columns(
+  sigma = df['price'].rolling_std(40000) ** 2,
   apy = (1 + pl.col("rate")) ** (365 * 86400) - 1,
 )
 plotting(df, 'rate', 'sigma')
@@ -258,13 +268,17 @@ df_test
 class TS:
   TICK_BASE = 1.05
   FEE_RATE = 0.003
-  def __init__(self, xt: int, yt: int, idx: int) -> None:
+  def __init__(self, xt: int, yt: int, *, idx: int, fee_rate: float | None = None, price_gap: float | None = None) -> None:
+    if fee_rate is None: fee_rate = self.FEE_RATE
+    if price_gap is None: price_gap = fee_rate
     self.k = 0
     self.XT = xt
     self.YT = yt
     self.idx = idx
     self.left_limit = self.TICK_BASE ** self.idx
     self.right_limit = self.TICK_BASE ** (self.idx + 1)
+    self.price_gap = price_gap
+    self.fee_rate = fee_rate
     self.update_k()
 
   @classmethod
@@ -282,8 +296,9 @@ class TS:
 
   def target_price(self, price: float) -> float:
     old_price = self.price()
-    if price / (1 + self.FEE_RATE) > old_price: return price / (1 + self.FEE_RATE)
-    if price * (1 + self.FEE_RATE) < old_price: return price * (1 + self.FEE_RATE)
+    if self.price_gap == 0: return price
+    if price / (1 + self.price_gap) > old_price: return price / (1 + self.price_gap)
+    if price * (1 + self.price_gap) < old_price: return price * (1 + self.price_gap)
     return old_price
 
   def set_position(self, xt: int, yt: int) -> tuple[int, int]:
@@ -297,7 +312,7 @@ def test_samm(samm: TS, df: pl.DataFrame):
   for i, row in enumerate(df.rows(named=True)):
     (xt, yt) = samm.price_to_position(row['price'])
     delta_xt, _ = samm.set_position(xt, yt)
-    feerate = abs(delta_xt) * samm.FEE_RATE / (xt + yt * samm.price())
+    feerate = abs(delta_xt) * samm.fee_rate / (xt + yt * samm.price())
     result[i, :] = xt, yt, samm.k, samm.price(), feerate
   result[0, -1] = 0
   return df.with_columns(
@@ -314,8 +329,8 @@ def test_samm(samm: TS, df: pl.DataFrame):
 # %%
 class UniswapV2(TS):
   TICK_BASE = float('inf')
-  def __init__(self, xt: int, yt: int) -> None:
-    super().__init__(xt, yt, 0)
+  def __init__(self, xt: int, yt: int, **kwargs) -> None:
+    super().__init__(xt, yt, idx=0, **kwargs)
     self.left_limit = 0
     self.right_limit = self.TICK_BASE
 
@@ -335,14 +350,16 @@ samm = UniswapV2(1000, 1000)
 test_samm(samm, df_rand)
 
 # %%
-samm = UniswapV2(1000, 1000)
+samm = UniswapV2(1000, 1000, price_gap = 0)
 df_result = test_samm(samm, df)
-plt.plot(df_result['ts_fee_cumsum'])
+
+plt.plot(df_result['ts_fee_cumsum'].log())
+plt.plot(df['fee_index'].log())
 
 # %%
 class UniswapV3(TS):
-  def __init__(self, xt: int, yt: int, idx: int) -> None:
-    super().__init__(xt, yt, idx=idx)
+  def __init__(self, xt: int, yt: int, *, idx: int, **kwargs) -> None:
+    super().__init__(xt, yt, idx=idx, **kwargs)
 
   def update_k(self):
     """
@@ -372,26 +389,25 @@ class UniswapV3(TS):
     new_YT = self.k * (1 / math.sqrt(price) - 1 / math.sqrt(self.right_limit))
     return new_XT, new_YT
 
-samm = UniswapV3(1000, 1000, 180)
+samm = UniswapV3(1000, 1000, idx=180)
 samm.price()
 
-# %%
-samm = UniswapV3(1000, 1000, 18)
-test_samm(samm, df_rand)
+# samm = UniswapV3(1000, 1000, idx=18)
+# test_samm(samm, df_rand)
 
 # %%
-samm = UniswapV3(1000, 1000, -400)
+samm = UniswapV3(1000, 1000, idx=-400)
 df_result = test_samm(samm, df)
 plt.plot(df_result['ts_fee_cumsum'])
 
 # %%
 class TickSwap(TS):
-  def __init__(self, xt: int, yt: int, idx: int) -> None:
-    super().__init__(xt, yt, idx=idx)
+  def __init__(self, xt: int, yt: int, *, idx: int, **kwargs) -> None:
+    super().__init__(xt, yt, idx=idx, **kwargs)
 
   def price(self) -> float:
-    # if self.XT == 0: return self.center_price() / (1 + self.FEE_RATE)
-    # if self.YT == 0: return self.center_price() * (1 + self.FEE_RATE)
+    # if self.XT == 0: return self.center_price() / (1 + self.price_gap)
+    # if self.YT == 0: return self.center_price() * (1 + self.price_gap)
     return self.center_price()
 
   def center_price(self) -> float:
@@ -409,41 +425,53 @@ class TickSwap(TS):
       return (0, self.k / center_price)
     return self.XT, self.YT
 
-class TickSwapFee1(TickSwap): FEE_RATE = 0.001
-class TickSwapFee3(TickSwap): FEE_RATE = 0.003
-class TickSwapFee10(TickSwap): FEE_RATE = 0.01
-class TickSwapFee30(TickSwap): FEE_RATE = 0.03
-class TickSwapFee100(TickSwap): FEE_RATE = 0.1
-
 # %%
-samm = TickSwap(1000, 1000, 18)
+samm = TickSwap(1000, 1000, idx=18)
 test_samm(samm, df_rand)
 
 # %%
-samm = TickSwap(1000, 1000, -400)
+samm = TickSwap(1000, 1000, idx=-400)
 df_result = test_samm(samm, df)
 plt.plot(df_result['ts_fee_cumsum'])
 
 # %%
-start_time = np.datetime64('2022-08-01', 's').astype(np.int64)
+start_time = np.datetime64('2023-01-01', 's').astype(np.int64)
 before_window = 7 * 86400
 after_window = 90 * 86400
 avg_price = df.filter((df['timestamp'] > start_time - before_window) & (df['timestamp'] < start_time)).select('price').mean().item()
-samm = TickSwap(1000, 1000, idx=TickSwap.price_to_tick(avg_price))
 df_test = df.filter((df['timestamp'] > start_time) & (df['timestamp'] < start_time + after_window))
-df_test = test_samm(samm, df_test)
+
+samm = TickSwap(1000, 1000, idx=TickSwap.price_to_tick(avg_price), price_gap=0)
+samm.price_gap = 0
+df_test = test_samm(samm, df_test).with_columns(
+  ts_fee_index_log = pl.col('ts_fee_cumsum').log(),
+)
+df_test1 = test_samm(UniswapV2(1000, 1000, price_gap=0), df_test).with_columns(
+  ts_fee_index_log = pl.col('ts_fee_cumsum').log(),
+)
 plotting(df_test, 'price', 'ts_fee_cumsum')
+plotting(df_test1, 'price', 'ts_fee_cumsum', 'fee_index')
 avg_price
 
 # %%
-models = [TickSwapFee1, TickSwapFee3, TickSwapFee10, TickSwapFee30, TickSwapFee100]
-df_test_result = [test_samm(model(1000, 1000, idx=TickSwap.price_to_tick(avg_price)), df_test) for model in models]
+df_test = diff_with_window(df_test, ['timestamp', 'ts_fee_index_log'],
+  ts_fee_rate = (1 + pl.col('ts_fee_index_log.diff()')) ** (1 / pl.col('timestamp.diff()')) - 1,
+).with_columns(
+  v2_fee_rate = diff_with_window(df_test1, ['timestamp', 'ts_fee_index_log'],
+    ts_fee_rate = (1 + pl.col('ts_fee_index_log.diff()')) ** (1 / pl.col('timestamp.diff()')) - 1,
+  )['ts_fee_rate']
+)
+plotting(df_test, 'price', 'ts_fee_cumsum', 'ts_fee_rate', 'v2_fee_rate', 'rate')
+
+# %%
+fee_rates = [0.001, 0.003, 0.01, 0.03, 0.1]
+df_test_result = [test_samm(TickSwap(1000, 1000, idx=TickSwap.price_to_tick(avg_price), fee_rate=fee), df_test) for fee in fee_rates]
 
 # %%
 fig, axs = plt.subplots(2, 1)
 set_axes_locator(axs)
-for df_result, model in zip(df_test_result, models):
-  axs[0].plot(df_test['datetime'], df_result['ts_fee_cumsum'], label=f"fee {model.FEE_RATE*100}%")
+for df_result, fee in zip(df_test_result, fee_rates):
+  axs[0].plot(df_test['datetime'], df_result['ts_fee_cumsum'], label=f"fee {fee*100}%")
 axs[0].legend()
 axs[1].plot(df_test['datetime'], df_test['price'])
 avg_price
