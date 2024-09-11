@@ -55,7 +55,7 @@ pub struct Log_CreateNewMarket {
   pub pt_address: Address,
   pub rt_address: Option<Address>,
   pub pt_name: Option<String>,
-  pub st_address: Option<Address>,
+  pub ut_address: Option<Address>,
 }
 
 impl TryFrom<LogMetric> for Log_CreateNewMarket {
@@ -76,7 +76,7 @@ impl TryFrom<LogMetric> for Log_CreateNewMarket {
       tt_address: None,
       rt_address: None,
       pt_name: None,
-      st_address: None,
+      ut_address: None,
     };
     Ok(result)
   }
@@ -101,7 +101,7 @@ impl Log_CreateNewMarket {
       Series::new("tt_address", log_metrics.iter().map(|i| i.tt_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
       Series::new("rt_address", log_metrics.iter().map(|i| i.rt_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
       Series::new("pt_name", log_metrics.iter().map(|i| i.pt_name.clone()).collect::<Vec<_>>()),
-      Series::new("st_address", log_metrics.iter().map(|i| i.st_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
+      Series::new("ut_address", log_metrics.iter().map(|i| i.ut_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
     ])?;
     Ok(df)
   }
@@ -126,7 +126,7 @@ where P::Error: 'static {
         tt_address: Some(info.tt_address),
         rt_address: Some(info.rt_address),
         pt_name: Some(info.pt_name),
-        st_address: Some(info.st_address),
+        ut_address: Some(info.ut_address),
         ..log
       },
       Err(e) => {
@@ -171,7 +171,7 @@ pub struct Log_Market {
   pub fee1: Option<u128>,
   /// in unit tt, netSyToReserve
   pub fee2: Option<u128>,
-  pub ln_fee_rate: Option<i128>,
+  pub ln_implied_apy: Option<i128>,
 }
 
 impl TryFrom<LogMetric> for Log_Market {
@@ -200,7 +200,7 @@ impl TryFrom<LogMetric> for Log_Market {
       tt_value: None,
       fee1: None,
       fee2: None,
-      ln_fee_rate: None,
+      ln_implied_apy: None,
     };
     match action {
       // Mint (index_topic_1 address receiver, uint256 netLpMinted, uint256 netSyUsed, uint256 netPtUsed)
@@ -221,7 +221,7 @@ impl TryFrom<LogMetric> for Log_Market {
       },
       // UpdateImpliedRate (index_topic_1 uint256 timestamp, uint256 lnLastImpliedRate)
       Pair_ActionType::Rate => {
-        result.ln_fee_rate = Some(log.get_arg(0)?.as_i128());
+        result.ln_implied_apy = Some(log.get_arg(0)?.as_i128());
       },
       // Burn (index_topic_1 address receiverSy, index_topic_2 address receiverPt, uint256 netLpBurned, uint256 netSyOut, uint256 netPtOut)
       Pair_ActionType::Burn => {
@@ -266,7 +266,7 @@ impl Log_Market {
       Series::new("tt_value", log_metrics.iter().map(|i| i.tt_value.map(|i| i as f64)).collect::<Vec<_>>()),
       Series::new("fee1", log_metrics.iter().map(|i| i.fee1.map(|i| i as f64)).collect::<Vec<_>>()),
       Series::new("fee2", log_metrics.iter().map(|i| i.fee2.map(|i| i as f64)).collect::<Vec<_>>()),
-      Series::new("ln_fee_rate", log_metrics.iter().map(|i| i.ln_fee_rate.map(|i| i as f64)).collect::<Vec<_>>()),
+      Series::new("ln_implied_apy", log_metrics.iter().map(|i| i.ln_implied_apy.map(|i| i as f64 / 1e18)).collect::<Vec<_>>()),
     ])?;
     Ok(df)
   }
