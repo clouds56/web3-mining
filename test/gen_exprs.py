@@ -5,7 +5,7 @@ import os
 import polars as pl
 from pathlib import Path
 
-enter_root_dir()
+setup_datasets(datasets_path=False)
 
 FOLDER_EXPRS = "tauri-app/src-tauri/exprs"
 os.makedirs(FOLDER_EXPRS, exist_ok=True)

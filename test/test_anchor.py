@@ -3,8 +3,7 @@ from common import *
 import polars as pl
 import math
 
-enter_root_dir()
-ad = all_datasets()
+ad = setup_datasets()
 
 df = load_datasets(ad, "pendle2_market_factory_events", with_timestamp=True).with_columns(
   delta = (pl.col('expiry') - pl.col('timestamp')) / 86400.0,

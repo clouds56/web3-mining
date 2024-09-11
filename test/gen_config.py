@@ -2,8 +2,7 @@
 from common import *
 import polars as pl
 
-enter_root_dir()
-ad = all_datasets()
+ad = setup_datasets()
 
 # %%
 import tomllib
@@ -100,7 +99,7 @@ print("# Pendle V2 Markets:", len(df))
 for row in df.rows(named=True):
   print(f"""
 [pendle2_market_events.{row['name'].replace('+', 'p')}]
-contract = "{row['contract']}"
+contract = "{row['market_address']}"
 created = {row['height']}
   """.strip() + '\n')
 

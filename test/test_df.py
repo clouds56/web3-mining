@@ -2,10 +2,18 @@
 from common import *
 import polars as pl
 import matplotlib.pyplot as plt
-enter_root_dir()
 
-# %%
-ad = all_datasets()
+ad = setup_datasets()
+
+import altair as alt
+alt.themes.register('custom', lambda: {
+  "config": {
+    "view": { "continuousWidth": 500, "continuousHeight": 300 },
+    "scale": { "zero": False },
+    "axisY": { "format": "e" },
+  }
+})
+alt.themes.enable('custom')
 
 # %%
 # df = load_files("block_metrics_*.parquet")
@@ -61,10 +69,26 @@ df.filter(df['fee'] == 1)['pair'].to_list()
 df = load_datasets(ad, 'uniswap3_pair_events_wbtc_weth')
 df[0]['tx_hash'].to_list()
 df.group_by('action').count()
-plotting(df, 'price', 'value', 'fee1', time_column='height')
+plotting(df, [
+  (df['price']/1e5)**-2,
+  (df['value'] * (df['tick_upper'] - df['tick_lower'])).cum_sum(),
+  -df['fee1'].cum_sum().fill_null(strategy="forward"),
+], time_column='height')
 # plt.plot(df['height'], (df['price']/1e5)**-2)
 # plt.plot(df['height'], (df['value'] * (df['tick_upper'] - df['tick_lower'])).cum_sum())
 # plt.plot(df['height'], -df['fee1'].cum_sum().fill_null(strategy="forward"))
+
+# %%
+df_plot = df.with_columns(
+  price = (pl.col('price') / 1e5) ** -2,
+  value = (pl.col('value') * (pl.col('tick_upper') - pl.col('tick_lower'))).cum_sum(),
+  fee1 = -pl.col('fee1').cum_sum().fill_null(strategy="forward"),
+).plot
+(
+  df_plot.line(x='height', y='price') &
+  df_plot.line(x='height', y='value') &
+  df_plot.line(x='height', y='fee1')
+).configure_view(continuousHeight=100)
 
 # %%
 df = load_datasets(ad, 'pendle2_market_events_zs-weETH_20240627_35_2000_30')

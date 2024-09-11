@@ -5,12 +5,9 @@ import polars as pl
 import numpy as np
 import matplotlib.pyplot as plt
 import math
-enter_root_dir()
-pair = "usdc_weth"
-ad = all_datasets()
 
-# %%
-dfb = load_datasets(ad, f"block_metrics")
+pair = "usdc_weth"
+ad = setup_datasets()
 
 # %%
 df = load_datasets(ad, f"uniswap_pair_block_{pair}", with_timestamp=True)

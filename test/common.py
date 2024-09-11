@@ -3,11 +3,31 @@ import itertools
 from pathlib import Path
 import polars as pl
 
-
-def enter_root_dir():
+def setup_datasets(*, alt_renderer = "png", datasets_path = None):
   import os
   while not os.path.exists("Cargo.toml"):
     os.chdir("../")
+
+  import altair as alt
+  # import vegafusion_jupyter
+  # vf.enable(row_limit=1_000_000)
+  # vegafusion_jupyter.enable()
+  alt.data_transformers.enable('vegafusion')
+  alt.renderers.enable(alt_renderer)
+  alt.themes.register('custom', lambda: {
+    "config": {
+      "view": { "continuousWidth": 500, "continuousHeight": 300 },
+      "scale": { "zero": False },
+      "axisY": { "format": "e" },
+    }
+  })
+  alt.themes.enable('custom')
+  # alt.Chart().configure_scale(zero=False)
+  # plt.renderers.enable('mimetype')
+
+  if datasets_path == False:
+    return None
+  return all_datasets(datasets_path)
 
 def load_files(files) -> pl.DataFrame:
   if isinstance(files, str):
@@ -35,7 +55,7 @@ def all_datasets(path = None):
   }).with_columns([
     pl.col('path').map_elements(lambda x: x.name.split(".")[0], return_dtype=pl.String).alias('prefix'),
     pl.col('path').map_elements(lambda x: try_int(x.name.split(".")[1]), return_dtype=pl.Int64).alias('idx'),
-    pl.col('path').map_elements(lambda x: str(x), return_dtype=pl.String).alias('path'),
+    pl.col('path').map_elements(lambda x: f"{x}", return_dtype=pl.String).alias('path'),
   ]).with_columns([
     pl.col('prefix').map_elements(lambda x: try_int(x.split("_")[-1]), return_dtype=pl.Int64).alias('cut'),
   ]).sort('prefix', 'idx')
@@ -69,7 +89,7 @@ def load_datasets(ad: pl.DataFrame, name: str, *, with_timestamp = False) -> pl.
 
 # %%
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import matplotlib.axes, matplotlib.dates, matplotlib.ticker
 from polars._typing import IntoExpr as pl_IntoExpr
 def set_axes_locator(ax: matplotlib.axes.Axes | np.ndarray[matplotlib.axes.Axes], locator: matplotlib.ticker.Locator | None = None):
@@ -84,39 +104,29 @@ def set_axes_locator(ax: matplotlib.axes.Axes | np.ndarray[matplotlib.axes.Axes]
     ax.xaxis.set_major_formatter(matplotlib.dates.ConciseDateFormatter(locator))
 
 def plotting(df: pl.DataFrame, *columns: pl_IntoExpr, time_column: str = 'datetime', twinx: bool | None = None):
+  if isinstance(columns[0], list):
+    columns = columns[0]
   if twinx is None:
     twinx = len(columns) == 2
-  if twinx:
-    fig, ax = plt.subplots()
-    if time_column != 'height':
-      set_axes_locator(ax)
-    axs = [ax, *[ax.twinx() for _ in range(len(columns) - 1)]]
-  else:
-    fig, axs = plt.subplots(len(columns), 1)
-    if time_column != 'height':
-      set_axes_locator(axs)
-  lines = []
-  for i, (column, ax) in enumerate(zip(columns, axs)):
-    if isinstance(column, str):
-      label = column
-      column = df[label]
-    elif isinstance(column, pl.Expr):
-      label = column.name
-      column = df.select(column)
-    elif isinstance(column, pl.Series):
-      label = column.name
+
+  df = df.select([
+    time_column,
+    *columns,
+  ])
+  column_names = df.columns
+  df_plot = df.plot
+  result = None
+  for i, column in enumerate(column_names[1:]):
+    line = df_plot.line(x=time_column, y=column)
+    if result is None:
+      result = line
     else:
-      label = "line_" + i
-    if twinx and i > 0:
-      ax._get_lines = axs[0]._get_lines
-      ax.spines["right"].set_position(("axes", 0.8 + 0.2 * i))
-      ax.set_ylabel(label, color=p.get_color())
-      ax.tick_params(axis='y', colors=p.get_color())
-    p, = ax.plot(df[time_column], column, label=label)
-    lines.append(p)
+      result &= line
   if twinx:
-    axs[0].legend(lines, [l.get_label() for l in lines])
-  return fig
+    pass
+  else:
+    result = result.configure_view(continuousHeight=100)
+  return result
 
 # %% pure functions
 def clamp(x, lower, upper):
