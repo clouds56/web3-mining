@@ -51,7 +51,7 @@ pub struct Log_CreateNewMarket {
   pub expiry: Option<u64>,
   pub reward_tokens: Option<Vec<Address>>,
   /// or sy_address
-  pub tt_address: Option<Address>,
+  pub st_address: Option<Address>,
   pub pt_address: Address,
   pub rt_address: Option<Address>,
   pub pt_name: Option<String>,
@@ -73,7 +73,7 @@ impl TryFrom<LogMetric> for Log_CreateNewMarket {
       fee_rate: log.get_arg(2)?.as_u256(),
       expiry: None,
       reward_tokens: None,
-      tt_address: None,
+      st_address: None,
       rt_address: None,
       pt_name: None,
       ut_address: None,
@@ -98,7 +98,7 @@ impl Log_CreateNewMarket {
       Series::new("reward_tokens", log_metrics.iter().map(|i|
         i.reward_tokens.as_ref().map(|i| i.into_iter().map(|j| j.to_checksum_hex()).collect::<Series>())
       ).collect::<Vec<_>>()),
-      Series::new("tt_address", log_metrics.iter().map(|i| i.tt_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
+      Series::new("st_address", log_metrics.iter().map(|i| i.st_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
       Series::new("rt_address", log_metrics.iter().map(|i| i.rt_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
       Series::new("pt_name", log_metrics.iter().map(|i| i.pt_name.clone()).collect::<Vec<_>>()),
       Series::new("ut_address", log_metrics.iter().map(|i| i.ut_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
@@ -123,7 +123,7 @@ where P::Error: 'static {
       Ok(info) => Log_CreateNewMarket {
         expiry: Some(info.expiry),
         reward_tokens: Some(info.reward_tokens),
-        tt_address: Some(info.tt_address),
+        st_address: Some(info.st_address),
         rt_address: Some(info.rt_address),
         pt_name: Some(info.pt_name),
         ut_address: Some(info.ut_address),
@@ -166,10 +166,10 @@ pub struct Log_Market {
   pub value: Option<i128>,
   pub pt_value: Option<i128>,
   /// aka Sy
-  pub tt_value: Option<i128>,
-  /// in unit tt, netSyFee
+  pub st_value: Option<i128>,
+  /// in unit st, netSyFee
   pub fee1: Option<u128>,
-  /// in unit tt, netSyToReserve
+  /// in unit st, netSyToReserve
   pub fee2: Option<u128>,
   pub ln_implied_apy: Option<i128>,
 }
@@ -197,7 +197,7 @@ impl TryFrom<LogMetric> for Log_Market {
       to: None,
       value: None,
       pt_value: None,
-      tt_value: None,
+      st_value: None,
       fee1: None,
       fee2: None,
       ln_implied_apy: None,
@@ -207,7 +207,7 @@ impl TryFrom<LogMetric> for Log_Market {
       Pair_ActionType::Mint => {
         result.to = Some(log.topic1()?.as_address()?);
         result.value = Some(log.get_arg(0)?.as_i128());
-        result.tt_value = Some(log.get_arg(1)?.as_i128());
+        result.st_value = Some(log.get_arg(1)?.as_i128());
         result.pt_value = Some(log.get_arg(2)?.as_i128());
       },
       // Swap (index_topic_1 address caller, index_topic_2 address receiver, int256 netPtOut, int256 netSyOut, uint256 netSyFee, uint256 netSyToReserve)
@@ -215,7 +215,7 @@ impl TryFrom<LogMetric> for Log_Market {
         result.sender = Some(log.topic1()?.as_address()?);
         result.to = Some(log.topic2()?.as_address()?);
         result.pt_value = Some(log.get_arg(0)?.as_i128());
-        result.tt_value = Some(log.get_arg(1)?.as_i128());
+        result.st_value = Some(log.get_arg(1)?.as_i128());
         result.fee1 = Some(log.get_arg(2)?.as_u128());
         result.fee2 = Some(log.get_arg(3)?.as_u128());
       },
@@ -227,7 +227,7 @@ impl TryFrom<LogMetric> for Log_Market {
       Pair_ActionType::Burn => {
         result.to = Some(log.topic1()?.as_address()?);
         result.value = Some(-log.get_arg(0)?.as_i128());
-        result.tt_value = Some(-log.get_arg(1)?.as_i128());
+        result.st_value = Some(-log.get_arg(1)?.as_i128());
         result.pt_value = Some(-log.get_arg(2)?.as_i128());
       },
       // RedeemRewards (index_topic_1 address user, uint256[] rewardsOut)
@@ -263,7 +263,7 @@ impl Log_Market {
       Series::new("to", log_metrics.iter().map(|i| i.to.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
       Series::new("value", log_metrics.iter().map(|i| i.value.map(|i| i as f64)).collect::<Vec<_>>()),
       Series::new("pt_value", log_metrics.iter().map(|i| i.pt_value.map(|i| i as f64)).collect::<Vec<_>>()),
-      Series::new("tt_value", log_metrics.iter().map(|i| i.tt_value.map(|i| i as f64)).collect::<Vec<_>>()),
+      Series::new("st_value", log_metrics.iter().map(|i| i.st_value.map(|i| i as f64)).collect::<Vec<_>>()),
       Series::new("fee1", log_metrics.iter().map(|i| i.fee1.map(|i| i as f64)).collect::<Vec<_>>()),
       Series::new("fee2", log_metrics.iter().map(|i| i.fee2.map(|i| i as f64)).collect::<Vec<_>>()),
       Series::new("ln_implied_apy", log_metrics.iter().map(|i| i.ln_implied_apy.map(|i| i as f64 / 1e18)).collect::<Vec<_>>()),

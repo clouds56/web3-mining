@@ -54,7 +54,7 @@ pub struct PendleMarketInfo {
   pub expiry: u64,
   pub reward_tokens: Vec<Address>,
   /// or sy_address
-  pub tt_address: Address,
+  pub st_address: Address,
   pub pt_address: Address,
   pub rt_address: Address,
   pub pt_name: String,
@@ -65,16 +65,16 @@ pub async fn get_pendle_market_info<P: Middleware + 'static>(client: Arc<P>, mar
   let market = IPendleMarket::new(market_address, client.clone());
   let expiry = market.expiry().call().await?.as_u64();
   let reward_tokens = market.get_reward_tokens().await?;
-  let (tt, pt, rt) = market.read_tokens().await?;
-  let tt_contract = IPendleYield::new(tt, client.clone());
+  let (st, pt, rt) = market.read_tokens().await?;
+  let st_contract = IPendleYield::new(st, client.clone());
   // this is a confused name in IPendleYield, it means underlying token, like sUSDE of SY-sUSDE
-  let ut_address = tt_contract.yield_token().call().await?;
+  let ut_address = st_contract.yield_token().call().await?;
   let pt_contract = IERC20::new(pt, client);
   let pt_name = pt_contract.symbol().call().await?;
   Ok(PendleMarketInfo {
     expiry,
     reward_tokens,
-    tt_address: tt,
+    st_address: st,
     pt_address: pt,
     pt_name,
     rt_address: rt,
