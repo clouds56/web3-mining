@@ -71,6 +71,7 @@ def load_datasets(ad: pl.DataFrame, name: str, *, with_timestamp = False) -> pl.
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.axes, matplotlib.dates, matplotlib.ticker
+from polars._typing import IntoExpr as pl_IntoExpr
 def set_axes_locator(ax: matplotlib.axes.Axes | np.ndarray[matplotlib.axes.Axes], locator: matplotlib.ticker.Locator | None = None):
   if locator is None:
     locator = matplotlib.dates.AutoDateLocator()
@@ -82,17 +83,39 @@ def set_axes_locator(ax: matplotlib.axes.Axes | np.ndarray[matplotlib.axes.Axes]
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(matplotlib.dates.ConciseDateFormatter(locator))
 
-def plotting(df: pl.DataFrame, *columns: str, time_column: str = 'datetime'):
-  if len(columns) == 2:
+def plotting(df: pl.DataFrame, *columns: pl_IntoExpr, time_column: str = 'datetime', twinx: bool | None = None):
+  if twinx is None:
+    twinx = len(columns) == 2
+  if twinx:
     fig, ax = plt.subplots()
-    set_axes_locator(ax)
-    ax.plot(df[time_column], df[columns[0]], label=columns[0], color='tab:blue')
-    ax.twinx().plot(df[time_column], df[columns[1]], label=columns[1], color='tab:orange')
-    return fig
-  fig, axs = plt.subplots(len(columns), 1)
-  set_axes_locator(axs)
-  for column, ax in zip(columns, axs):
-    ax.plot(df[time_column], df[column])
+    if time_column != 'height':
+      set_axes_locator(ax)
+    axs = [ax, *[ax.twinx() for _ in range(len(columns) - 1)]]
+  else:
+    fig, axs = plt.subplots(len(columns), 1)
+    if time_column != 'height':
+      set_axes_locator(axs)
+  lines = []
+  for i, (column, ax) in enumerate(zip(columns, axs)):
+    if isinstance(column, str):
+      label = column
+      column = df[label]
+    elif isinstance(column, pl.Expr):
+      label = column.name
+      column = df.select(column)
+    elif isinstance(column, pl.Series):
+      label = column.name
+    else:
+      label = "line_" + i
+    if twinx and i > 0:
+      ax._get_lines = axs[0]._get_lines
+      ax.spines["right"].set_position(("axes", 0.8 + 0.2 * i))
+      ax.set_ylabel(label, color=p.get_color())
+      ax.tick_params(axis='y', colors=p.get_color())
+    p, = ax.plot(df[time_column], column, label=label)
+    lines.append(p)
+  if twinx:
+    axs[0].legend(lines, [l.get_label() for l in lines])
   return fig
 
 # %% pure functions

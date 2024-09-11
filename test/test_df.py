@@ -17,12 +17,6 @@ df = load_datasets(ad, "uniswap_factory_events")
 df.sort('height')['tx_hash'].head().to_list()
 
 # %%
-df = load_files("uniswap_pair_old_*.parquet")
-if df:
-  dfg = df.group_by('topic0').agg([pl.first('tx_hash'), pl.count('height').alias('count')]).sort('count', descending=True)
-  list(zip(*[list(dfg[col]) for col in dfg.columns]))
-
-# %%
 pairs = (ad
   .filter(pl.col('name').str.starts_with('uniswap_pair_events'))
   .select(pl.col('name').str.strip_prefix('uniswap_pair_events_').alias('pair'))
@@ -67,10 +61,14 @@ df.filter(df['fee'] == 1)['pair'].to_list()
 df = load_datasets(ad, 'uniswap3_pair_events_wbtc_weth')
 df[0]['tx_hash'].to_list()
 df.group_by('action').count()
+plotting(df, 'price', 'value', 'fee1', time_column='height')
+# plt.plot(df['height'], (df['price']/1e5)**-2)
+# plt.plot(df['height'], (df['value'] * (df['tick_upper'] - df['tick_lower'])).cum_sum())
+# plt.plot(df['height'], -df['fee1'].cum_sum().fill_null(strategy="forward"))
+
 # %%
-plt.plot(df['height'], (df['price']/1e5)**-2)
-# %%
-plt.plot(df['height'], (df['value'] * (df['tick_upper'] - df['tick_lower'])).cum_sum())
-# %%
-plt.plot(df['height'], -df['fee1'].cum_sum().fill_null(strategy="forward"))
+df = load_datasets(ad, 'pendle2_market_events_zs-weETH_20240627_35_2000_30')
+df.filter(pl.col('ln_fee_rate').is_not_null()).with_columns(
+  'rate'
+)
 # %%
