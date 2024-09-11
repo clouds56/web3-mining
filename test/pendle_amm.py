@@ -349,9 +349,7 @@ test_samm(samm, df_rand)
 # %%
 samm = UniswapV2(1000, 1000, price_gap = 0)
 df_result = test_samm(samm, df)
-
-plt.plot(df_result['ts_fee_cumsum'].log())
-plt.plot(df['fee_index'].log())
+plotting(df_result, 'ts_fee_cumsum', 'fee_index', samey=True)
 
 # %%
 class UniswapV3(TS):
@@ -395,7 +393,7 @@ samm.price()
 # %%
 samm = UniswapV3(1000, 1000, idx=-400)
 df_result = test_samm(samm, df)
-plt.plot(df_result['ts_fee_cumsum'])
+plotting(df_result, 'ts_fee_cumsum')
 
 # %%
 class TickSwap(TS):
@@ -429,7 +427,7 @@ test_samm(samm, df_rand)
 # %%
 samm = TickSwap(1000, 1000, idx=-400)
 df_result = test_samm(samm, df)
-plt.plot(df_result['ts_fee_cumsum'])
+plotting(df_result, 'ts_fee_cumsum')
 
 # %%
 start_time = np.datetime64('2023-01-01', 's').astype(np.int64)
@@ -484,5 +482,56 @@ plt.axhline(samm.center_price() / 1.1)
 for row in df_test_result[-1].filter(pl.col('ts_fee')>0).rows(named=True):
   plt.axvline(row['datetime'], color='red')
 plt.plot(df_test['datetime'], df_test['price'])
+
+# %%
+(min_apy, max_apy, fee_rate) = 35, 500, 3
+min_apy = min_apy / 1000
+max_apy = max_apy / 1000
+fee_rate = fee_rate / 10000
+df = load_datasets(ad, 'pendle2_market_events_weETH_20240627_35_500_3', with_timestamp=True)
+df.group_by('action').agg(pl.len())
+df = df.with_columns(
+  pl.col('value').fill_null(0),
+  pl.col('pt_value').fill_null(0),
+  pl.col('tt_value').fill_null(0),
+  pl.col('fee1').fill_null(0),
+  pl.col('fee2').fill_null(0),
+  pl.col('ln_fee_rate').fill_null(strategy='forward') / 1e18,
+).group_by('height').agg(
+  pl.col('value').sum(),
+  pl.col('pt_value').sum(),
+  pl.col('tt_value').sum(),
+  pl.col('fee1').sum(),
+  pl.col('fee2').sum(),
+  pl.col('ln_fee_rate').last().alias('ln_implied_apy'),
+).sort('height').with_columns(
+  pl.col('value').cum_sum().alias('value'),
+  pl.col('pt_value').cum_sum().alias('pt_value'),
+  pl.col('tt_value').cum_sum().alias('tt_value'),
+  pl.col('fee1').cum_sum().alias('fee1'),
+  pl.col('fee2').cum_sum().alias('fee2'),
+  (pl.col('ln_implied_apy').exp() - 1).alias('implied_apy'),
+)
+# %%
+dfb = load_datasets(ad, 'block_metrics')
+df = df.join(dfb.select('height', 'timestamp'), on='height', how='left').with_columns(
+  datetime = pl.from_epoch(pl.col('timestamp'), time_unit='s'),
+)
+# %%
+expiry = int(np.datetime64('2024-06-27').astype('datetime64[s]').astype(int))
+tte = int(expiry - df['timestamp'].min())
+tte
+A, C = Pendle.coeff_ac(min_apy, max_apy, total_time=tte / (365*86400))
+# %%
+plotting(df, 'value', 'pt_value', 'tt_value', 'fee1', 'fee2', 'implied_apy')
+# %%
+df = df.with_columns(
+  price = 2 - (pl.col('ln_implied_apy') / (365*86400) * (expiry - pl.col('timestamp'))).exp(),
+)
+plotting(df, 'price')
+
+# %%
+plt.plot(df['price'])
+plt.plot(df['ln_implied_apy'])
 
 # %%

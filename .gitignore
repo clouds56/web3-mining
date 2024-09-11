@@ -10,10 +10,12 @@ __pycache__
 /Cargo.lock
 /data
 /db
+/remote
 
 *.parquet
 *.zip
 stage.toml
+_vegafusion_data
 
 # pixi environments
 .pixi

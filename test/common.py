@@ -103,16 +103,22 @@ def set_axes_locator(ax: matplotlib.axes.Axes | np.ndarray[matplotlib.axes.Axes]
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(matplotlib.dates.ConciseDateFormatter(locator))
 
-def plotting(df: pl.DataFrame, *columns: pl_IntoExpr, time_column: str = 'datetime', twinx: bool | None = None):
+def plotting(df: pl.DataFrame, *columns: pl_IntoExpr, time_column: str = 'datetime',
+  twinx: bool | None = None, samey: bool = False,
+):
   if isinstance(columns[0], list):
     columns = columns[0]
-  if twinx is None:
+  if twinx is None or samey:
     twinx = len(columns) == 2
+  if samey:
+    twinx = True
 
   df = df.select([
     time_column,
     *columns,
   ])
+  if len(df) > 100_000:
+    df = df.sample(50_000)
   column_names = df.columns
   df_plot = df.plot
   result = None
@@ -120,11 +126,13 @@ def plotting(df: pl.DataFrame, *columns: pl_IntoExpr, time_column: str = 'dateti
     line = df_plot.line(x=time_column, y=column)
     if result is None:
       result = line
+    elif samey or twinx:
+      result += line
     else:
       result &= line
-  if twinx:
-    pass
-  else:
+  if twinx and not samey:
+    result = result.resolve_scale(y='independent')
+  elif len(columns) != 1 and not samey and not twinx:
     result = result.configure_view(continuousHeight=100)
   return result
 
