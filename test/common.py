@@ -42,11 +42,6 @@ def load_files(files) -> pl.DataFrame:
   return dfa
 
 # %%
-def try_int(s: str):
-  try:
-    return int(s)
-  except:
-    return None
 def all_datasets(path = None):
   if path is None:
     path = Path("data").rglob("*.parquet")
@@ -137,5 +132,28 @@ def plotting(df: pl.DataFrame, *columns: pl_IntoExpr, time_column: str = 'dateti
   return result
 
 # %% pure functions
+def try_int(s: str):
+  try:
+    return int(s)
+  except:
+    return None
+
 def clamp(x, lower, upper):
   return min(max(x, lower), upper)
+
+def parse_yyyymmdd(date: str):
+  date = date[:-4] + '-' + date[-4:-2] + '-' + date[-2:]
+  return np.datetime64(date, 's')
+
+# %%
+def parse_market_name(name: str):
+  parts = name.rsplit('_', 5)
+  if len(parts) < 5:
+    return None
+  return {
+    'underlying': parts[0],
+    'expiry': int(parse_yyyymmdd(parts[1]).astype('datetime64[s]').astype(int)),
+    'min_apy': int(parts[2]) / 1e3,
+    'max_apy': int(parts[3]) / 1e3,
+    'fee_rate': int(parts[4]) / 1e4,
+  }

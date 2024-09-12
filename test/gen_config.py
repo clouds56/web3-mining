@@ -85,7 +85,7 @@ df = df.with_columns(
   expected_apy = pl.col('anchor') ** (365 / pl.col('time_to_expiry')),
   max_apy = pl.col('max_rate') ** (365 / pl.col('time_to_expiry')),
 ).with_columns(
-  token_str = pl.col('pt_name').map_elements(trim_pt_name, return_dtype=pl.String),
+  token_str = pl.col('pt_name').map_elements(trim_pt_name, return_dtype=pl.String).str.replace_all('\\+', 'p'),
   expiry_str = pl.from_epoch(pl.col('expiry')).cast(pl.Date).cast(pl.String).str.replace_all('-', ''),
   min_apy_str = ((pl.col('min_apy') - 1) * 1000).round().cast(pl.Int64).cast(pl.String),
   max_apy_str = ((pl.col('max_apy') - 1) * 1000).round().cast(pl.Int64).cast(pl.String),
@@ -99,7 +99,7 @@ df_market = df.join(toml_to_df(stage, 'pendle2_market_events'), on="name", how='
 print("# Pendle V2 Markets:", len(df_market))
 for row in df_market.rows(named=True):
   print(f"""
-[pendle2_market_events.{row['name'].replace('+', 'p')}]
+[pendle2_market_events.{row['name']}]
 contract = "{row['market_address']}"
 created = {row['height']}
   """.strip() + '\n')
@@ -107,7 +107,7 @@ df_yt = df.join(toml_to_df(stage, 'pendle2_yt_events'), on="name", how='anti')
 print("# Pendle V2 Yield Tokens:", len(df_yt))
 for row in df_yt.rows(named=True):
   print(f"""
-[pendle2_yt_events.{row['name'].replace('+', 'p')}]
+[pendle2_yt_events.{row['name']}]
 contract = "{row['rt_address']}"
 created = {row['height']}
   """.strip() + '\n')
