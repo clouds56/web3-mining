@@ -94,12 +94,21 @@ df = df.with_columns(
   name = pl.col('token_str') + "_" + pl.col('expiry_str') + "_" + pl.col('min_apy_str') + "_" + pl.col('max_apy_str') + "_" + pl.col('fee_rate_str'),
 ).drop(['token_str', 'expiry_str', 'min_apy_str', 'max_apy_str', 'fee_rate_str']).filter(
   pl.col('name').is_not_null()
-).join(toml_to_df(stage, 'pendle2_market_events'), on="name", how='anti')
-print("# Pendle V2 Markets:", len(df))
-for row in df.rows(named=True):
+)
+df_market = df.join(toml_to_df(stage, 'pendle2_market_events'), on="name", how='anti')
+print("# Pendle V2 Markets:", len(df_market))
+for row in df_market.rows(named=True):
   print(f"""
 [pendle2_market_events.{row['name'].replace('+', 'p')}]
 contract = "{row['market_address']}"
+created = {row['height']}
+  """.strip() + '\n')
+df_yt = df.join(toml_to_df(stage, 'pendle2_yt_events'), on="name", how='anti')
+print("# Pendle V2 Yield Tokens:", len(df_yt))
+for row in df_yt.rows(named=True):
+  print(f"""
+[pendle2_yt_events.{row['name'].replace('+', 'p')}]
+contract = "{row['rt_address']}"
 created = {row['height']}
   """.strip() + '\n')
 

@@ -5,7 +5,7 @@ use ethers_core::types::Address;
 use ethers_providers::Middleware;
 
 use crate::Result;
-pub use pendle::{IPendleMarket, IPendleYield};
+pub use pendle::{IPendleMarket, IPendleST, IPendleYT};
 
 pub mod base {
   use ethers_contract::abigen;
@@ -31,7 +31,10 @@ pub mod base {
 pub mod pendle {
   use ethers_contract::abigen;
   abigen!(IPendleMarket, "./src/rpc/abi/pendle_mkt.json");
-  abigen!(IPendleYield, "./src/rpc/abi/pendle_yield.json");
+  // IPendleYield
+  abigen!(IPendleST, "./src/rpc/abi/pendle_sy.json");
+  // PendleYieldToken
+  abigen!(IPendleYT, "./src/rpc/abi/pendle_yt.json");
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,6 +62,7 @@ pub struct PendleMarketInfo {
   pub rt_address: Address,
   pub pt_name: String,
   pub ut_address: Address,
+  pub rt_reward_tokens: Vec<Address>,
 }
 
 pub async fn get_pendle_market_info<P: Middleware + 'static>(client: Arc<P>, market_address: Address) -> Result<PendleMarketInfo> {
@@ -66,11 +70,13 @@ pub async fn get_pendle_market_info<P: Middleware + 'static>(client: Arc<P>, mar
   let expiry = market.expiry().call().await?.as_u64();
   let reward_tokens = market.get_reward_tokens().await?;
   let (st, pt, rt) = market.read_tokens().await?;
-  let st_contract = IPendleYield::new(st, client.clone());
+  let st_contract = IPendleST::new(st, client.clone());
   // this is a confused name in IPendleYield, it means underlying token, like sUSDE of SY-sUSDE
   let ut_address = st_contract.yield_token().call().await?;
-  let pt_contract = IERC20::new(pt, client);
+  let pt_contract = IERC20::new(pt, client.clone());
   let pt_name = pt_contract.symbol().call().await?;
+  let rt_contract = IPendleYT::new(rt, client.clone());
+  let rt_reward_tokens = rt_contract.get_reward_tokens().call().await?;
   Ok(PendleMarketInfo {
     expiry,
     reward_tokens,
@@ -79,5 +85,6 @@ pub async fn get_pendle_market_info<P: Middleware + 'static>(client: Arc<P>, mar
     pt_name,
     rt_address: rt,
     ut_address,
+    rt_reward_tokens,
   })
 }

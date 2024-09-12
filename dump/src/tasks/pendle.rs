@@ -14,6 +14,8 @@ pub struct PendleStage {
   pub pendle2_market_factory_events: Arc<AtomicU64>,
   #[serde(default)]
   pub pendle2_market_events: IndexMap<String, ContractStage>,
+  #[serde(default)]
+  pub pendle2_yt_events: IndexMap<String, ContractStage>,
 }
 
 impl Default for PendleStage {
@@ -21,6 +23,7 @@ impl Default for PendleStage {
     Self {
       pendle2_market_factory_events: Self::default_pendle2_market_factory_events(),
       pendle2_market_events: Default::default(),
+      pendle2_yt_events: Default::default(),
     }
   }
 }
@@ -35,11 +38,19 @@ impl PendleStage {
       metrics::pendle::fetch_pendle_market_factory(client.clone(), start, end)
     ).run(default_event_listener).await?;
 
-    for (name, market) in &self.pendle2_market_events {
-      market.init_checkpoint(config.cut);
-      let contract = market.contract.parse().unwrap();
-      RunConfig::new(&config, market.checkpoint.clone(), &format!("pendle2_market_events_{}", name), &|start, end|
-        metrics::pendle::fetch_pendle_market(client.clone(), start, end, contract)
+    for (name, stage) in &self.pendle2_market_events {
+      stage.init_checkpoint(config.cut);
+      let address = stage.contract.parse().unwrap();
+      RunConfig::new(&config, stage.checkpoint.clone(), &format!("pendle2_market_events_{}", name), &|start, end|
+        metrics::pendle::fetch_pendle_market(client.clone(), start, end, address)
+      ).run(default_event_listener).await?;
+    }
+
+    for (name, stage) in &self.pendle2_yt_events {
+      stage.init_checkpoint(config.cut);
+      let address = stage.contract.parse().unwrap();
+      RunConfig::new(&config, stage.checkpoint.clone(), &format!("pendle2_yt_events_{}", name), &|start, end|
+        metrics::pendle::fetch_pendle_yt(client.clone(), start, end, address)
       ).run(default_event_listener).await?;
     }
 

@@ -1,5 +1,6 @@
 use anyhow::Result;
-use ethers_core::types::{Address, Log, H256};
+use ethers_contract::EthEvent;
+use ethers_core::{abi::RawLog, types::{Address, Log, H256}};
 use polars::{frame::DataFrame, prelude::NamedFrom as _, series::Series};
 
 use super::{ToChecksumHex as _, ToHex as _, Value};
@@ -12,12 +13,7 @@ pub struct LogMetric {
   // pub timestamp: u64,
   pub contract: Address,
   pub tx_hash: String,
-  pub topic0: H256,
-  pub topic1: Option<H256>,
-  pub topic2: Option<H256>,
-  pub topic3: Option<H256>,
-  // pub topic4: Option<H256>,
-  pub value: Vec<H256>,
+  pub raw: RawLog,
 }
 
 impl From<Log> for LogMetric {
@@ -27,13 +23,10 @@ impl From<Log> for LogMetric {
       block_index: log.log_index.unwrap_or_default().as_u64(),
       contract: log.address,
       tx_hash: log.transaction_hash.unwrap_or_default().to_hex(),
-      // timestamp: log.timestamp.as_u64(),
-      topic0: log.topics.get(0).copied().unwrap_or_default(),
-      topic1: log.topics.get(1).copied(),
-      topic2: log.topics.get(2).copied(),
-      topic3: log.topics.get(3).copied(),
-      // topic4: log.topics.get(4).copied(),
-      value: log.data.to_vec().chunks(32).map(|i| H256::from_slice(i)).collect::<Vec<_>>(),
+      raw: RawLog {
+        topics: log.topics,
+        data: log.data.to_vec(),
+      },
     }
   }
 }
@@ -45,22 +38,31 @@ impl LogMetric {
       Series::new("block_index", log_metrics.iter().map(|i| i.block_index).collect::<Vec<_>>()),
       Series::new("contract", log_metrics.iter().map(|i| i.contract.to_checksum_hex()).collect::<Vec<_>>()),
       Series::new("tx_hash", log_metrics.iter().map(|i| i.tx_hash.clone()).collect::<Vec<_>>()),
-      Series::new("topic0", log_metrics.iter().map(|i| i.topic0.to_hex()).collect::<Vec<_>>()),
-      Series::new("topic1", log_metrics.iter().map(|i| i.topic1.map(|i| i.to_hex())).collect::<Vec<_>>()),
-      Series::new("topic2", log_metrics.iter().map(|i| i.topic2.map(|i| i.to_hex())).collect::<Vec<_>>()),
-      Series::new("topic3", log_metrics.iter().map(|i| i.topic3.map(|i| i.to_hex())).collect::<Vec<_>>()),
-      // Series::new("topic4", log_metrics.iter().map(|i| i.topic4.map(|i| i.to_hex())).collect::<Vec<_>>()),
+      Series::new("topic0", log_metrics.iter().map(|i| i.topic0().0.to_hex()).collect::<Vec<_>>()),
+      Series::new("topic1", log_metrics.iter().map(|i| i.topic1().ok().map(|i| i.0.to_hex())).collect::<Vec<_>>()),
+      Series::new("topic2", log_metrics.iter().map(|i| i.topic2().ok().map(|i| i.0.to_hex())).collect::<Vec<_>>()),
+      Series::new("topic3", log_metrics.iter().map(|i| i.topic3().ok().map(|i| i.0.to_hex())).collect::<Vec<_>>()),
     ])?;
     Ok(df)
   }
 
-  pub fn topic1(&self) -> Result<Value> { Ok(Value(self.topic1.ok_or_else(|| anyhow::anyhow!("topic1 not present"))?)) }
-  pub fn topic2(&self) -> Result<Value> { Ok(Value(self.topic2.ok_or_else(|| anyhow::anyhow!("topic2 not present"))?)) }
-  pub fn topic3(&self) -> Result<Value> { Ok(Value(self.topic3.ok_or_else(|| anyhow::anyhow!("topic3 not present"))?)) }
-
+  pub fn topic0(&self) -> Value { Value(self.raw.topics.get(0).copied().unwrap_or_default()) }
+  pub fn topic1(&self) -> Result<Value> { Ok(Value(self.raw.topics.get(1).copied().ok_or_else(|| anyhow::anyhow!("topic1 not present"))?)) }
+  pub fn topic2(&self) -> Result<Value> { Ok(Value(self.raw.topics.get(2).copied().ok_or_else(|| anyhow::anyhow!("topic2 not present"))?)) }
+  pub fn topic3(&self) -> Result<Value> { Ok(Value(self.raw.topics.get(3).copied().ok_or_else(|| anyhow::anyhow!("topic3 not present"))?)) }
 
   pub fn get_arg(&self, index: usize) -> Result<Value> {
-    let value = self.value.get(index).copied().ok_or_else(|| anyhow::anyhow!("arg{} not present", index))?;
-    Ok(Value(value))
+    let offset = index * 0x20;
+    let end = self.raw.data.len().min(offset + 0x20);
+    if offset <= end {
+      return Err(anyhow::anyhow!("data too short"));
+    }
+    let data = &self.raw.data[offset..end];
+    Ok(Value(H256::from_slice(data)))
+  }
+
+  pub fn decode<T: EthEvent>(&self) -> Result<T> {
+    let result = T::decode_log(&self.raw);
+    Ok(result?)
   }
 }

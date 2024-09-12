@@ -123,19 +123,20 @@ pub struct Log_Pair {
 impl TryFrom<LogMetric> for Log_Pair {
   type Error = anyhow::Error;
   fn try_from(log: LogMetric) -> anyhow::Result<Self> {
-    let action = if log.topic0 == *consts::TOPIC_Sync { Pair_ActionType::Sync }
-    else if log.topic0 == *consts::TOPIC_Swap { Pair_ActionType::Swap }
-    else if log.topic0 == *consts::TOPIC_Transfer { Pair_ActionType::Transfer }
-    else if log.topic0 == *consts::TOPIC_Mint { Pair_ActionType::Mint }
-    else if log.topic0 == *consts::TOPIC_Approval { Pair_ActionType::Approval }
-    else if log.topic0 == *consts::TOPIC_Burn { Pair_ActionType::Burn }
+    let topic0 = log.topic0().0;
+    let action = if topic0 == *consts::TOPIC_Sync { Pair_ActionType::Sync }
+    else if topic0 == *consts::TOPIC_Swap { Pair_ActionType::Swap }
+    else if topic0 == *consts::TOPIC_Transfer { Pair_ActionType::Transfer }
+    else if topic0 == *consts::TOPIC_Mint { Pair_ActionType::Mint }
+    else if topic0 == *consts::TOPIC_Approval { Pair_ActionType::Approval }
+    else if topic0 == *consts::TOPIC_Burn { Pair_ActionType::Burn }
     else { bail!("unknown action type") };
     let mut result = Log_Pair {
       height: log.height,
       block_index: log.block_index,
       contract: log.contract,
       tx_hash: log.tx_hash.clone(),
-      topic0: log.topic0,
+      topic0,
       action,
       sender: None,
       to: None,
