@@ -1,5 +1,5 @@
 # %%
-from common import *
+from _common import *
 import polars as pl
 import matplotlib.pyplot as plt
 
@@ -91,8 +91,44 @@ df_plot = df.with_columns(
 ).configure_view(continuousHeight=100)
 
 # %%
-df = load_datasets(ad, 'pendle2_market_events_zs-weETH_20240627_35_2000_30')
-df.filter(pl.col('ln_fee_rate').is_not_null()).with_columns(
-  'rate'
-)
+markets = (ad
+  .filter(pl.col('name').str.starts_with('pendle2_market_events'))
+  .select(pl.col('name').str.strip_prefix('pendle2_market_events_'))
+  ['name'])
+markets = pl.DataFrame([x for x in [parse_market_name(i) for i in markets] if x is not None])
+markets
+
+# %%
+for market in markets.filter(pl.col('name').str.contains('weETH_20240627'))[:1].rows(named=True):
+  df = load_datasets(ad, f"pendle2_market_events_{market['name']}", with_timestamp=True)
+  print(df.group_by("action").len().sort("len", descending=True))
+  df_acc = df.with_columns(
+    pl.col('value').fill_null(0),
+    pl.col('pt_value').fill_null(0),
+    pl.col('st_value').fill_null(0),
+    pl.col('fee1').fill_null(0),
+    pl.col('fee2').fill_null(0),
+    pl.col('ln_implied_apy').forward_fill(),
+  ).group_by('height').agg(
+    pl.col('value').sum(),
+    pl.col('pt_value').sum(),
+    pl.col('st_value').sum(),
+    pl.col('fee1').sum(),
+    pl.col('fee2').sum(),
+    pl.col('rewards').drop_nulls().count(),
+    pl.col('ln_implied_apy').last(),
+  ).sort('height').with_columns(
+    pl.col('value').cum_sum().alias('value'),
+    pl.col('pt_value').cum_sum().alias('pt_value'),
+    pl.col('st_value').cum_sum().alias('st_value'),
+    pl.col('fee1').cum_sum().alias('fee1'),
+    pl.col('fee2').cum_sum().alias('fee2'),
+    (pl.col('ln_implied_apy').exp() - 1).alias('implied_apy'),
+  ).drop('ln_implied_apy')
+  df_acc.write_parquet(f"data/pendle2_market_block_{market['name']}.parquet")
+# %%
+# df.select(
+#   # pl.concat_list(df['rewards'].drop_nulls()).arr.sum()
+#   pl.col('rewards').drop_nulls().cast(pl.Array(pl.Float64, shape=1)).arr.sum()
+# )
 # %%

@@ -1,4 +1,5 @@
 # %%
+from dataclasses import dataclass
 import itertools
 from pathlib import Path
 import polars as pl
@@ -146,14 +147,23 @@ def parse_yyyymmdd(date: str):
   return np.datetime64(date, 's')
 
 # %%
-def parse_market_name(name: str):
+@dataclass
+class MarketInfo:
+  name: str
+  underlying: str
+  expiry: int
+  min_apy: float
+  max_apy: float
+  fee_rate: float
+def parse_market_name(name: str) -> MarketInfo | None:
   parts = name.rsplit('_', 5)
   if len(parts) < 5:
     return None
-  return {
-    'underlying': parts[0],
-    'expiry': int(parse_yyyymmdd(parts[1]).astype('datetime64[s]').astype(int)),
-    'min_apy': int(parts[2]) / 1e3,
-    'max_apy': int(parts[3]) / 1e3,
-    'fee_rate': int(parts[4]) / 1e4,
-  }
+  return MarketInfo(
+    name=name,
+    underlying=parts[0],
+    expiry=int(parse_yyyymmdd(parts[1]).astype('datetime64[s]').astype(int)),
+    min_apy=int(parts[2]) / 1e3,
+    max_apy=int(parts[3]) / 1e3,
+    fee_rate=int(parts[4]) / 1e4,
+  )
