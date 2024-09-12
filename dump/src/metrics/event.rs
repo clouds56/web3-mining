@@ -54,7 +54,7 @@ impl LogMetric {
   pub fn get_arg(&self, index: usize) -> Result<Value> {
     let offset = index * 0x20;
     let end = self.raw.data.len().min(offset + 0x20);
-    if offset <= end {
+    if offset >= end {
       return Err(anyhow::anyhow!("data too short"));
     }
     let data = &self.raw.data[offset..end];
