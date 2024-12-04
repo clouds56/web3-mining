@@ -20,3 +20,6 @@ vegafusion = ">=1.6.9,<2"
 anywidget = ">=0.9.13,<0.10"
 vegafusion-jupyter = ">=1.6.9,<2"
 vl-convert-python = ">=1.6.1,<2"
+
+[pypi-dependencies]
+avenger = ">=0.0.8, <0.0.9"

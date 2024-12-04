@@ -106,6 +106,7 @@ import math
 class Pendle(PTT):
   TRADE_STEPS = 10
   """
+  in the context, y means PT, x means TT (aka ST)
   1 / p == t * ln(y/x) / A + k
   """
   def __init__(self, pt: int, tt: int, *, A: float, C: float) -> None:

@@ -80,7 +80,7 @@ df_rand = pl.DataFrame().with_columns(
 
 start_time = np.datetime64('2022-12-01', 's').astype(np.int64)
 window = 90 * 86400
-df_test = df.filter((df['timestamp'] > start_time) & (df['timestamp'] < start_time + window)).select("height", "timestamp", "price", "rate", "apy")
+df_test = df.filter((df['timestamp'] > start_time) & (df['timestamp'] < start_time + window)).select("height", "timestamp", "datetime", "price", "rate", "apy")
 plt.plot(rate)
 
 # %%
@@ -98,7 +98,11 @@ amm.price_to_position(0.98)
 
 # %%
 amm = Pendle(1000, 1000, A=pendle_init[0], C=pendle_init[1])
-test_amm(amm, df_rand)
+df_rand_r = test_amm(amm, df_rand).with_columns(
+  ptt_expected_apy = pl.col('ptt_k') ** (365 * 86400 / (pl.col('ptt_time') * amm.total_time)) - 1,
+)
+
+plotting(df_rand_r, 'apy', 'ptt_expected_apy', time_column='height')
 
 # %%
 pendle_init = Pendle.coeff_ac(0, 0.25, total_time=90/365)
@@ -107,6 +111,9 @@ df_test = test_amm(amm, df_test).with_columns(
   ptt_expected_apy = pl.col('ptt_k') ** (365 * 86400 / (pl.col('ptt_time') * amm.total_time)) - 1,
 )
 df_test
+
+# %%
+plotting(df_test, 'apy', 'ptt_expected_apy')
 
 # %%
 def test_samm(samm: TS, df: pl.DataFrame):
@@ -219,15 +226,28 @@ df = load_datasets(ad, f'pendle2_market_block_{market_name}', with_timestamp=Tru
 plotting(df, 'value', 'pt_value', 'st_value', 'fee1', 'fee2', 'implied_apy')
 
 # %%
-tte = int(market_info.expiry - df['timestamp'].min())
-A, C = Pendle.coeff_ac(market_info.min_apy, market_info.max_apy, total_time=tte / (365*86400))
+total_time = int(market_info.expiry - df['timestamp'].min())
+A, C = Pendle.coeff_ac(market_info.min_apy, market_info.max_apy, total_time=total_time / (365*86400))
+df = df.with_columns(
+  time_to_expiry = pl.max_horizontal(market_info.expiry - pl.col('timestamp').cast(pl.Int64), 0),
+).with_columns(
+  tte = pl.col('time_to_expiry') / total_time,
+).with_columns(
+  scalar__1 = pl.col('tte') / A,
+  anchor = C ** pl.col('tte'),
+)
+plotting(df, 'scalar__1', 'anchor')
 
 # %%
-# %%
 df = df.with_columns(
-  price = 2 - ((1 + pl.col('implied_apy')) ** ((market_info.expiry - pl.col('timestamp')) / (365*86400))),
+  price = 2 - ((1 + pl.col('implied_apy')) ** (pl.col('time_to_expiry') / (365*86400))),
+).with_columns(
+  ratio = ((1 / pl.col('price') - pl.col('anchor')) / pl.col('scalar__1')).exp(),
+  ratio1 = pl.col('pt_value') / pl.col('st_value'),
+).with_columns(
+  exchange_rate = pl.col('ratio') / pl.col('ratio1'),
 )
-plotting(df, 'price')
+plotting(df, 'price', 'ratio', 'ratio1', 'exchange_rate')
 
 # %%
 plt.plot(df['price'])
