@@ -1,5 +1,6 @@
 pub mod uniswap;
 pub mod pendle;
+pub mod erc4626;
 
 use std::{future::Future, path::Path, sync::{atomic::AtomicU64, Arc}};
 

@@ -10,7 +10,7 @@ use std::{path::Path, str::FromStr as _, sync::{atomic::AtomicU64, Arc}};
 use anyhow::Result;
 use config::Config;
 use ethers_providers::{JsonRpcClient, Middleware, Provider};
-use tasks::{pendle::PendleStage, uniswap::UniswapStage, RunConfig, RunEvent};
+use tasks::{erc4626::Erc4626Stage, pendle::PendleStage, uniswap::UniswapStage, RunConfig, RunEvent};
 use tracing_subscriber::fmt::format::FmtSpan;
 
 async fn get_block_number<P: JsonRpcClient>(client: &Provider<P>) -> Result<u64> {
@@ -29,6 +29,9 @@ pub struct Stage {
 
   #[serde(flatten)]
   pendle: PendleStage,
+
+  #[serde(flatten)]
+  erc4626: Erc4626Stage,
 }
 
 pub struct DatasetName<'a> {
@@ -135,6 +138,7 @@ async fn main() -> Result<()> {
 
   stage.uniswap.run_tasks(client.clone(), &config, default_event_listener).await?;
   stage.pendle.run_tasks(client.clone(), &config, default_event_listener).await?;
+  stage.erc4626.run_tasks(client.clone(), &config, default_event_listener).await?;
 
   save_stage(&config.data_dir, &stage)?;
   Ok(())

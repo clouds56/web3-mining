@@ -26,6 +26,14 @@ pub mod base {
       event Approval(address indexed owner, address indexed spender, uint256 value)
     ]"#,
   );
+
+  abigen!(
+    IERC4626,
+    r#"[
+      event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)
+      event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares)
+    ]"#,
+  );
 }
 
 pub mod pendle {

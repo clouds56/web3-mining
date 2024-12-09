@@ -5,6 +5,7 @@ pub mod event;
 pub mod uniswap_v2;
 pub mod uniswap_v3;
 pub mod pendle;
+pub mod erc4626;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Value(pub H256);
