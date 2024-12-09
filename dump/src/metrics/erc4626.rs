@@ -1,5 +1,6 @@
 use anyhow::{bail, Result};
-use ethers_core::types::{Address, U256};
+use ethers_contract::EthEvent;
+use ethers_core::types::{Address, H256, U256};
 use ethers_providers::Middleware;
 use polars::{frame::DataFrame, prelude::NamedFrom as _, series::Series};
 
@@ -32,15 +33,20 @@ pub mod consts {
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Erc4626_ActionType {
-  Deposit, Withdraw,
+  Deposit, Withdraw, RewardsReceived,
 }
 
 #[allow(non_camel_case_types)]
 pub struct Log_Erc4626 {
+  pub height: u64,
+  pub block_index: u64,
+  pub contract: Address,
+  pub tx_hash: String,
+  pub topic0: H256,
+  pub action: Erc4626_ActionType,
   pub sender: Address,
   pub receiver: Option<Address>,
   pub owner: Address,
-  pub action: Erc4626_ActionType,
   pub assets: U256,
   pub shares: U256,
 }
@@ -48,12 +54,26 @@ pub struct Log_Erc4626 {
 impl TryFrom<LogMetric> for Log_Erc4626 {
   type Error = anyhow::Error;
   fn try_from(log: LogMetric) -> Result<Self> {
+    use rpc::contract::base::ierc4626;
     let topic0 = log.topic0().0;
     let action =
     if topic0 == *consts::TOPIC_Deposit { Erc4626_ActionType::Deposit }
     else if topic0 == *consts::TOPIC_Withdraw { Erc4626_ActionType::Withdraw }
+    else if topic0 == ierc4626::RewardsReceivedFilter::signature() { Erc4626_ActionType::RewardsReceived }
     else { bail!("unknown topic0: {:?}", topic0) };
-    use rpc::contract::base::ierc4626;
+    let base_result = Log_Erc4626 {
+      height: log.height,
+      block_index: log.block_index,
+      contract: log.contract,
+      tx_hash: log.tx_hash.to_string(),
+      topic0,
+      action,
+      sender: Address::zero(),
+      receiver: None,
+      owner: Address::zero(),
+      assets: U256::zero(),
+      shares: U256::zero(),
+    };
     let result = match action {
       Erc4626_ActionType::Deposit => {
         let event = log.decode::<ierc4626::DepositFilter>()?;
@@ -61,9 +81,9 @@ impl TryFrom<LogMetric> for Log_Erc4626 {
           sender: event.sender,
           receiver: None,
           owner: event.owner,
-          action,
           assets: event.assets,
           shares: event.shares,
+          ..base_result
         }
       }
       Erc4626_ActionType::Withdraw => {
@@ -75,8 +95,16 @@ impl TryFrom<LogMetric> for Log_Erc4626 {
           action,
           assets: event.assets,
           shares: event.shares,
+          ..base_result
         }
       },
+      Erc4626_ActionType::RewardsReceived => {
+        let event = log.decode::<ierc4626::RewardsReceivedFilter>()?;
+        Log_Erc4626 {
+          assets: event.amount,
+          ..base_result
+        }
+      }
     };
     Ok(result)
   }
@@ -85,10 +113,14 @@ impl TryFrom<LogMetric> for Log_Erc4626 {
 impl Log_Erc4626 {
   pub fn to_df(log_metrics: &[Self]) -> Result<DataFrame> {
     let df = DataFrame::new(vec![
+      Series::new("height", log_metrics.iter().map(|x| x.height).collect::<Vec<_>>()),
+      Series::new("block_index", log_metrics.iter().map(|x| x.block_index).collect::<Vec<_>>()),
+      Series::new("contract", log_metrics.iter().map(|x| x.contract.to_checksum_hex()).collect::<Vec<_>>()),
+      Series::new("tx_hash", log_metrics.iter().map(|x| x.tx_hash.clone()).collect::<Vec<_>>()),
+      Series::new("action", log_metrics.iter().map(|x| format!("{:?}", x.action)).collect::<Vec<_>>()),
       Series::new("sender", log_metrics.iter().map(|x| x.sender.to_checksum_hex()).collect::<Vec<_>>()),
       Series::new("receiver", log_metrics.iter().map(|x| x.receiver.map(|x| x.to_checksum_hex())).collect::<Vec<_>>()),
       Series::new("owner", log_metrics.iter().map(|x| x.owner.to_checksum_hex()).collect::<Vec<_>>()),
-      Series::new("action", log_metrics.iter().map(|x| format!("{:?}", x.action)).collect::<Vec<_>>()),
       Series::new("assets", log_metrics.iter().map(|x| x.assets.to_string()).collect::<Vec<_>>()),
       Series::new("shares", log_metrics.iter().map(|x| x.shares.to_string()).collect::<Vec<_>>()),
     ])?;
