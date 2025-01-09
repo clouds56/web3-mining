@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::{bail, Result};
 use ethers_core::types::{Address, H256, I256, U256};
 use ethers_providers::Middleware;
-use polars::{frame::DataFrame, prelude::NamedFrom as _, series::Series};
+use polars::{df, frame::DataFrame, series::Series};
 
 use crate::rpc;
 
@@ -121,25 +121,25 @@ impl TryFrom<LogMetric> for Log_CreateNewMarket {
 
 impl Log_CreateNewMarket {
   pub fn to_df(log_metrics: &[Self]) -> Result<DataFrame> {
-    let df = DataFrame::new(vec![
-      Series::new("height", log_metrics.iter().map(|i| i.height).collect::<Vec<_>>()),
-      Series::new("block_index", log_metrics.iter().map(|i| i.block_index).collect::<Vec<_>>()),
-      Series::new("contract", log_metrics.iter().map(|i| i.contract.to_checksum_hex()).collect::<Vec<_>>()),
-      Series::new("tx_hash", log_metrics.iter().map(|i| i.tx_hash.to_hex()).collect::<Vec<_>>()),
-      Series::new("pt_address", log_metrics.iter().map(|i| i.pt_address.to_checksum_hex()).collect::<Vec<_>>()),
-      Series::new("market_address", log_metrics.iter().map(|i| i.market_address.to_checksum_hex()).collect::<Vec<_>>()),
-      Series::new("scalar", log_metrics.iter().map(|i| i.scalar.as_i128() as f64 * 1e-18).collect::<Vec<_>>()),
-      Series::new("anchor", log_metrics.iter().map(|i| i.anchor.as_i128() as f64 * 1e-18).collect::<Vec<_>>()),
-      Series::new("ln_fee_rate", log_metrics.iter().map(|i| i.ln_fee_rate.as_u128() as f64 * 1e-18).collect::<Vec<_>>()),
-      Series::new("expiry", log_metrics.iter().map(|i| i.expiry.map(|i| i as u64)).collect::<Vec<_>>()),
-      Series::new("reward_tokens", log_metrics.iter().map(|i|
+    let df = df!{
+      "height" => log_metrics.iter().map(|i| i.height).collect::<Vec<_>>(),
+      "block_index" => log_metrics.iter().map(|i| i.block_index).collect::<Vec<_>>(),
+      "contract" => log_metrics.iter().map(|i| i.contract.to_checksum_hex()).collect::<Vec<_>>(),
+      "tx_hash" => log_metrics.iter().map(|i| i.tx_hash.to_hex()).collect::<Vec<_>>(),
+      "pt_address" => log_metrics.iter().map(|i| i.pt_address.to_checksum_hex()).collect::<Vec<_>>(),
+      "market_address" => log_metrics.iter().map(|i| i.market_address.to_checksum_hex()).collect::<Vec<_>>(),
+      "scalar" => log_metrics.iter().map(|i| i.scalar.as_i128() as f64 * 1e-18).collect::<Vec<_>>(),
+      "anchor" => log_metrics.iter().map(|i| i.anchor.as_i128() as f64 * 1e-18).collect::<Vec<_>>(),
+      "ln_fee_rate" => log_metrics.iter().map(|i| i.ln_fee_rate.as_u128() as f64 * 1e-18).collect::<Vec<_>>(),
+      "expiry" => log_metrics.iter().map(|i| i.expiry.map(|i| i as u64)).collect::<Vec<_>>(),
+      "reward_tokens" => log_metrics.iter().map(|i|
         i.reward_tokens.as_ref().map(|i| i.into_iter().map(|j| j.to_checksum_hex()).collect::<Series>())
-      ).collect::<Vec<_>>()),
-      Series::new("st_address", log_metrics.iter().map(|i| i.st_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
-      Series::new("rt_address", log_metrics.iter().map(|i| i.rt_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
-      Series::new("pt_name", log_metrics.iter().map(|i| i.pt_name.clone()).collect::<Vec<_>>()),
-      Series::new("ut_address", log_metrics.iter().map(|i| i.ut_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
-    ])?;
+      ).collect::<Vec<_>>(),
+      "st_address" => log_metrics.iter().map(|i| i.st_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>(),
+      "rt_address" => log_metrics.iter().map(|i| i.rt_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>(),
+      "pt_name" => log_metrics.iter().map(|i| i.pt_name.clone()).collect::<Vec<_>>(),
+      "ut_address" => log_metrics.iter().map(|i| i.ut_address.map(|i| i.to_checksum_hex())).collect::<Vec<_>>(),
+    }?;
     Ok(df)
   }
 }
@@ -300,22 +300,22 @@ impl TryFrom<LogMetric> for Log_Market {
 
 impl Log_Market {
   pub fn to_df(log_metrics: &[Self]) -> Result<DataFrame> {
-    let df = DataFrame::new(vec![
-      Series::new("height", log_metrics.iter().map(|i| i.height).collect::<Vec<_>>()),
-      Series::new("block_index", log_metrics.iter().map(|i| i.block_index).collect::<Vec<_>>()),
-      Series::new("contract", log_metrics.iter().map(|i| i.contract.to_checksum_hex()).collect::<Vec<_>>()),
-      Series::new("tx_hash", log_metrics.iter().map(|i| i.tx_hash.clone()).collect::<Vec<_>>()),
-      Series::new("action", log_metrics.iter().map(|i| format!("{:?}", i.action)).collect::<Vec<_>>()),
-      Series::new("sender", log_metrics.iter().map(|i| i.sender.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
-      Series::new("to", log_metrics.iter().map(|i| i.to.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
-      Series::new("value", log_metrics.iter().map(|i| i.value.map(|i| i as f64)).collect::<Vec<_>>()),
-      Series::new("pt_value", log_metrics.iter().map(|i| i.pt_value.map(|i| i as f64)).collect::<Vec<_>>()),
-      Series::new("st_value", log_metrics.iter().map(|i| i.st_value.map(|i| i as f64)).collect::<Vec<_>>()),
-      Series::new("fee1", log_metrics.iter().map(|i| i.fee1.map(|i| i as f64)).collect::<Vec<_>>()),
-      Series::new("fee2", log_metrics.iter().map(|i| i.fee2.map(|i| i as f64)).collect::<Vec<_>>()),
-      Series::new("rewards", log_metrics.iter().map(|i| i.rewards.as_ref().map(|i| i.iter().map(|j| *j as f64).collect::<Series>())).collect::<Vec<_>>()),
-      Series::new("ln_implied_apy", log_metrics.iter().map(|i| i.ln_implied_apy.map(|i| i as f64 / 1e18)).collect::<Vec<_>>()),
-    ])?;
+    let df = df!{
+      "height" => log_metrics.iter().map(|i| i.height).collect::<Vec<_>>(),
+      "block_index" => log_metrics.iter().map(|i| i.block_index).collect::<Vec<_>>(),
+      "contract" => log_metrics.iter().map(|i| i.contract.to_checksum_hex()).collect::<Vec<_>>(),
+      "tx_hash" => log_metrics.iter().map(|i| i.tx_hash.clone()).collect::<Vec<_>>(),
+      "action" => log_metrics.iter().map(|i| format!("{:?}", i.action)).collect::<Vec<_>>(),
+      "sender" => log_metrics.iter().map(|i| i.sender.map(|i| i.to_checksum_hex())).collect::<Vec<_>>(),
+      "to" => log_metrics.iter().map(|i| i.to.map(|i| i.to_checksum_hex())).collect::<Vec<_>>(),
+      "value" => log_metrics.iter().map(|i| i.value.map(|i| i as f64)).collect::<Vec<_>>(),
+      "pt_value" => log_metrics.iter().map(|i| i.pt_value.map(|i| i as f64)).collect::<Vec<_>>(),
+      "st_value" => log_metrics.iter().map(|i| i.st_value.map(|i| i as f64)).collect::<Vec<_>>(),
+      "fee1" => log_metrics.iter().map(|i| i.fee1.map(|i| i as f64)).collect::<Vec<_>>(),
+      "fee2" => log_metrics.iter().map(|i| i.fee2.map(|i| i as f64)).collect::<Vec<_>>(),
+      "rewards" => log_metrics.iter().map(|i| i.rewards.as_ref().map(|i| i.iter().map(|j| *j as f64).collect::<Series>())).collect::<Vec<_>>(),
+      "ln_implied_apy" => log_metrics.iter().map(|i| i.ln_implied_apy.map(|i| i as f64 / 1e18)).collect::<Vec<_>>(),
+    }?;
     Ok(df)
   }
 }
@@ -449,20 +449,20 @@ impl TryFrom<LogMetric> for Log_YT {
 
 impl Log_YT {
   pub fn to_df(log_metrics: &[Self]) -> Result<DataFrame> {
-    let df = DataFrame::new(vec![
-      Series::new("height", log_metrics.iter().map(|i| i.height).collect::<Vec<_>>()),
-      Series::new("block_index", log_metrics.iter().map(|i| i.block_index).collect::<Vec<_>>()),
-      Series::new("contract", log_metrics.iter().map(|i| i.contract.to_checksum_hex()).collect::<Vec<_>>()),
-      Series::new("tx_hash", log_metrics.iter().map(|i| i.tx_hash.clone()).collect::<Vec<_>>()),
-      Series::new("action", log_metrics.iter().map(|i| format!("{:?}", i.action)).collect::<Vec<_>>()),
-      Series::new("sender", log_metrics.iter().map(|i| i.sender.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
-      Series::new("to", log_metrics.iter().map(|i| i.to.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
-      Series::new("rt_value", log_metrics.iter().map(|i| i.rt_value.map(|i| i as f64)).collect::<Vec<_>>()),
-      Series::new("st_value", log_metrics.iter().map(|i| i.st_value.map(|i| i as f64)).collect::<Vec<_>>()),
-      Series::new("fee", log_metrics.iter().map(|i| i.fee.map(|i| i as f64)).collect::<Vec<_>>()),
-      Series::new("rewards", log_metrics.iter().map(|i| i.rewards.as_ref().map(|i| i.iter().map(|i| *i as f64).collect::<Series>())).collect::<Vec<_>>()),
-      Series::new("st_scale_index", log_metrics.iter().map(|i| i.st_scale_index.map(|i| i as f64 / 1e18)).collect::<Vec<_>>()),
-    ])?;
+    let df = df!{
+      "height" => log_metrics.iter().map(|i| i.height).collect::<Vec<_>>(),
+      "block_index" => log_metrics.iter().map(|i| i.block_index).collect::<Vec<_>>(),
+      "contract" => log_metrics.iter().map(|i| i.contract.to_checksum_hex()).collect::<Vec<_>>(),
+      "tx_hash" => log_metrics.iter().map(|i| i.tx_hash.clone()).collect::<Vec<_>>(),
+      "action" => log_metrics.iter().map(|i| format!("{:?}", i.action)).collect::<Vec<_>>(),
+      "sender" => log_metrics.iter().map(|i| i.sender.map(|i| i.to_checksum_hex())).collect::<Vec<_>>(),
+      "to" => log_metrics.iter().map(|i| i.to.map(|i| i.to_checksum_hex())).collect::<Vec<_>>(),
+      "rt_value" => log_metrics.iter().map(|i| i.rt_value.map(|i| i as f64)).collect::<Vec<_>>(),
+      "st_value" => log_metrics.iter().map(|i| i.st_value.map(|i| i as f64)).collect::<Vec<_>>(),
+      "fee" => log_metrics.iter().map(|i| i.fee.map(|i| i as f64)).collect::<Vec<_>>(),
+      "rewards" => log_metrics.iter().map(|i| i.rewards.as_ref().map(|i| i.iter().map(|i| *i as f64).collect::<Series>())).collect::<Vec<_>>(),
+      "st_scale_index" => log_metrics.iter().map(|i| i.st_scale_index.map(|i| i as f64 / 1e18)).collect::<Vec<_>>(),
+    }?;
     Ok(df)
   }
 }

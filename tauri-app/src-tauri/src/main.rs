@@ -5,8 +5,11 @@
 
 use std::{collections::{BTreeMap, HashMap}, fmt::Display, path::PathBuf, sync::{Arc, Mutex}};
 
-use polars::{frame::DataFrame, lazy::frame::{IntoLazy, LazyFrame}, prelude::SortMultipleOptions};
-use polars_plan::dsl::Expr;
+use polars::{
+  frame::DataFrame,
+  lazy::frame::{IntoLazy, LazyFrame},
+  prelude::{Expr, SchemaExt as _, SortMultipleOptions},
+};
 use tauri::State;
 use tracing_subscriber::fmt::format::FmtSpan;
 
@@ -136,14 +139,15 @@ fn infer_expr_from_schema(schema: &polars::prelude::Schema) -> Result<Vec<Expr>>
   use polars::lazy::dsl::*;
   let mut exprs = Vec::new();
   for i in schema.iter_fields() {
-    match i.data_type() {
-      DataType::Int64 => exprs.push(col(i.name())),
+    let name = i.name.clone();
+    match i.dtype {
+      DataType::Int64 => exprs.push(col(name.clone())),
       DataType::Float64 => {
-        exprs.push(col(i.name()).mean().alias(&format!("{}:mean", &i.name)));
+        exprs.push(col(name.clone()).mean().alias(&format!("{}:mean", &name)));
       }
       _ => {},
     }
-    exprs.push(col(i.name()).fill_null_with_strategy(polars::chunked_array::ops::FillNullStrategy::Forward(None)).last())
+    exprs.push(col(name).fill_null_with_strategy(polars::chunked_array::ops::FillNullStrategy::Forward(None)).last())
   }
   Ok(exprs)
 }

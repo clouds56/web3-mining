@@ -1,7 +1,7 @@
 use anyhow::Result;
 use ethers_core::types::{Block, Transaction};
 use ethers_providers::Middleware;
-use polars::{frame::DataFrame, lazy::frame::IntoLazy, prelude::NamedFrom as _, series::Series};
+use polars::{df, frame::DataFrame, lazy::frame::IntoLazy};
 
 use crate::rpc;
 
@@ -34,15 +34,15 @@ impl From<Block<Transaction>> for BlockMetric {
 
 impl BlockMetric {
   pub fn to_df(block_metrics: &[Self]) -> Result<DataFrame> {
-    let df = DataFrame::new(vec![
-      Series::new("height", block_metrics.iter().map(|i| i.height).collect::<Vec<_>>()),
-      Series::new("timestamp", block_metrics.iter().map(|i| i.timestamp).collect::<Vec<_>>()),
-      Series::new("tx_count", block_metrics.iter().map(|i| i.tx_count as u32).collect::<Vec<_>>()),
-      Series::new("total_eth", block_metrics.iter().map(|i| i.total_eth).collect::<Vec<_>>()),
-      Series::new("total_fee", block_metrics.iter().map(|i| i.total_fee).collect::<Vec<_>>()),
-      Series::new("gas_used", block_metrics.iter().map(|i| i.gas_used).collect::<Vec<_>>()),
-      Series::new("fee_per_gas", block_metrics.iter().map(|i| i.fee_per_gas).collect::<Vec<_>>()),
-    ])?;
+    let df = df!{
+      "height" => block_metrics.iter().map(|i| i.height).collect::<Vec<_>>(),
+      "timestamp" => block_metrics.iter().map(|i| i.timestamp).collect::<Vec<_>>(),
+      "tx_count" => block_metrics.iter().map(|i| i.tx_count as u32).collect::<Vec<_>>(),
+      "total_eth" => block_metrics.iter().map(|i| i.total_eth).collect::<Vec<_>>(),
+      "total_fee" => block_metrics.iter().map(|i| i.total_fee).collect::<Vec<_>>(),
+      "gas_used" => block_metrics.iter().map(|i| i.gas_used).collect::<Vec<_>>(),
+      "fee_per_gas" => block_metrics.iter().map(|i| i.fee_per_gas).collect::<Vec<_>>(),
+    }?;
     Ok(df)
   }
 }

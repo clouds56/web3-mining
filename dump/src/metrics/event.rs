@@ -1,7 +1,7 @@
 use anyhow::Result;
 use ethers_contract::EthEvent;
 use ethers_core::{abi::RawLog, types::{Address, Log, H256}};
-use polars::{frame::DataFrame, prelude::NamedFrom as _, series::Series};
+use polars::{df, frame::DataFrame};
 
 use super::{ToChecksumHex as _, ToHex as _, Value};
 
@@ -33,16 +33,16 @@ impl From<Log> for LogMetric {
 
 impl LogMetric {
   pub fn to_df(log_metrics: &[Self]) -> Result<DataFrame> {
-    let df = DataFrame::new(vec![
-      Series::new("height", log_metrics.iter().map(|i| i.height).collect::<Vec<_>>()),
-      Series::new("block_index", log_metrics.iter().map(|i| i.block_index).collect::<Vec<_>>()),
-      Series::new("contract", log_metrics.iter().map(|i| i.contract.to_checksum_hex()).collect::<Vec<_>>()),
-      Series::new("tx_hash", log_metrics.iter().map(|i| i.tx_hash.clone()).collect::<Vec<_>>()),
-      Series::new("topic0", log_metrics.iter().map(|i| i.topic0().0.to_hex()).collect::<Vec<_>>()),
-      Series::new("topic1", log_metrics.iter().map(|i| i.topic1().ok().map(|i| i.0.to_hex())).collect::<Vec<_>>()),
-      Series::new("topic2", log_metrics.iter().map(|i| i.topic2().ok().map(|i| i.0.to_hex())).collect::<Vec<_>>()),
-      Series::new("topic3", log_metrics.iter().map(|i| i.topic3().ok().map(|i| i.0.to_hex())).collect::<Vec<_>>()),
-    ])?;
+    let df = df! {
+      "height" => log_metrics.iter().map(|i| i.height).collect::<Vec<_>>(),
+      "block_index" => log_metrics.iter().map(|i| i.block_index).collect::<Vec<_>>(),
+      "contract" => log_metrics.iter().map(|i| i.contract.to_checksum_hex()).collect::<Vec<_>>(),
+      "tx_hash" => log_metrics.iter().map(|i| i.tx_hash.clone()).collect::<Vec<_>>(),
+      "topic0" => log_metrics.iter().map(|i| i.topic0().0.to_hex()).collect::<Vec<_>>(),
+      "topic1" => log_metrics.iter().map(|i| i.topic1().ok().map(|i| i.0.to_hex())).collect::<Vec<_>>(),
+      "topic2" => log_metrics.iter().map(|i| i.topic2().ok().map(|i| i.0.to_hex())).collect::<Vec<_>>(),
+      "topic3" => log_metrics.iter().map(|i| i.topic3().ok().map(|i| i.0.to_hex())).collect::<Vec<_>>(),
+    }?;
     Ok(df)
   }
 

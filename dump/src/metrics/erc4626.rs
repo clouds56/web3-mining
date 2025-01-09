@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use ethers_contract::EthEvent;
 use ethers_core::types::{Address, H256, U256};
 use ethers_providers::Middleware;
-use polars::{frame::DataFrame, prelude::NamedFrom as _, series::Series};
+use polars::{df, frame::DataFrame};
 
 use crate::rpc;
 
@@ -112,18 +112,18 @@ impl TryFrom<LogMetric> for Log_Erc4626 {
 
 impl Log_Erc4626 {
   pub fn to_df(log_metrics: &[Self]) -> Result<DataFrame> {
-    let df = DataFrame::new(vec![
-      Series::new("height", log_metrics.iter().map(|x| x.height).collect::<Vec<_>>()),
-      Series::new("block_index", log_metrics.iter().map(|x| x.block_index).collect::<Vec<_>>()),
-      Series::new("contract", log_metrics.iter().map(|x| x.contract.to_checksum_hex()).collect::<Vec<_>>()),
-      Series::new("tx_hash", log_metrics.iter().map(|x| x.tx_hash.clone()).collect::<Vec<_>>()),
-      Series::new("action", log_metrics.iter().map(|x| format!("{:?}", x.action)).collect::<Vec<_>>()),
-      Series::new("sender", log_metrics.iter().map(|x| x.sender.to_checksum_hex()).collect::<Vec<_>>()),
-      Series::new("receiver", log_metrics.iter().map(|x| x.receiver.map(|x| x.to_checksum_hex())).collect::<Vec<_>>()),
-      Series::new("owner", log_metrics.iter().map(|x| x.owner.to_checksum_hex()).collect::<Vec<_>>()),
-      Series::new("assets", log_metrics.iter().map(|x| x.assets.to_string()).collect::<Vec<_>>()),
-      Series::new("shares", log_metrics.iter().map(|x| x.shares.to_string()).collect::<Vec<_>>()),
-    ])?;
+    let df = df! {
+      "height" => log_metrics.iter().map(|x| x.height).collect::<Vec<_>>(),
+      "block_index" => log_metrics.iter().map(|x| x.block_index).collect::<Vec<_>>(),
+      "contract" => log_metrics.iter().map(|x| x.contract.to_checksum_hex()).collect::<Vec<_>>(),
+      "tx_hash" => log_metrics.iter().map(|x| x.tx_hash.clone()).collect::<Vec<_>>(),
+      "action" => log_metrics.iter().map(|x| format!("{:?}", x.action)).collect::<Vec<_>>(),
+      "sender" => log_metrics.iter().map(|x| x.sender.to_checksum_hex()).collect::<Vec<_>>(),
+      "receiver" => log_metrics.iter().map(|x| x.receiver.map(|x| x.to_checksum_hex())).collect::<Vec<_>>(),
+      "owner" => log_metrics.iter().map(|x| x.owner.to_checksum_hex()).collect::<Vec<_>>(),
+      "assets" => log_metrics.iter().map(|x| x.assets.to_string()).collect::<Vec<_>>(),
+      "shares" => log_metrics.iter().map(|x| x.shares.to_string()).collect::<Vec<_>>(),
+    }?;
     Ok(df)
   }
 }

@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use ethers_core::types::{Address, H256};
 use ethers_providers::Middleware;
-use polars::{frame::DataFrame, prelude::NamedFrom as _, series::Series};
+use polars::{df, frame::DataFrame};
 
 use crate::rpc;
 
@@ -71,17 +71,17 @@ impl TryFrom<LogMetric> for Log_PoolCreated {
 
 impl Log_PoolCreated {
   pub fn to_df(log_metrics: &[Self]) -> Result<DataFrame> {
-    let df = DataFrame::new(vec![
-      Series::new("height", log_metrics.iter().map(|i| i.height).collect::<Vec<_>>()),
-      Series::new("block_index", log_metrics.iter().map(|i| i.block_index).collect::<Vec<_>>()),
-      Series::new("contract", log_metrics.iter().map(|i| i.contract.to_checksum_hex()).collect::<Vec<_>>()),
-      Series::new("tx_hash", log_metrics.iter().map(|i| i.tx_hash.to_hex()).collect::<Vec<_>>()),
-      Series::new("token0", log_metrics.iter().map(|i| i.token0.to_checksum_hex()).collect::<Vec<_>>()),
-      Series::new("token1", log_metrics.iter().map(|i| i.token1.to_checksum_hex()).collect::<Vec<_>>()),
-      Series::new("pair", log_metrics.iter().map(|i| i.pair.to_checksum_hex()).collect::<Vec<_>>()),
-      Series::new("fee", log_metrics.iter().map(|i| i.fee).collect::<Vec<_>>()),
-      Series::new("tick_spacing", log_metrics.iter().map(|i| i.tick_spacing).collect::<Vec<_>>()),
-    ])?;
+    let df = df!{
+      "height" => log_metrics.iter().map(|i| i.height).collect::<Vec<_>>(),
+      "block_index" => log_metrics.iter().map(|i| i.block_index).collect::<Vec<_>>(),
+      "contract" => log_metrics.iter().map(|i| i.contract.to_checksum_hex()).collect::<Vec<_>>(),
+      "tx_hash" => log_metrics.iter().map(|i| i.tx_hash.to_hex()).collect::<Vec<_>>(),
+      "token0" => log_metrics.iter().map(|i| i.token0.to_checksum_hex()).collect::<Vec<_>>(),
+      "token1" => log_metrics.iter().map(|i| i.token1.to_checksum_hex()).collect::<Vec<_>>(),
+      "pair" => log_metrics.iter().map(|i| i.pair.to_checksum_hex()).collect::<Vec<_>>(),
+      "fee" => log_metrics.iter().map(|i| i.fee).collect::<Vec<_>>(),
+      "tick_spacing" => log_metrics.iter().map(|i| i.tick_spacing).collect::<Vec<_>>(),
+    }?;
     Ok(df)
   }
 }
@@ -214,23 +214,23 @@ impl TryFrom<LogMetric> for Log_Pair {
 
 impl Log_Pair {
   pub fn to_df(log_metrics: &[Self]) -> Result<DataFrame> {
-    let df = DataFrame::new(vec![
-      Series::new("height", log_metrics.iter().map(|i| i.height).collect::<Vec<_>>()),
-      Series::new("block_index", log_metrics.iter().map(|i| i.block_index).collect::<Vec<_>>()),
-      Series::new("contract", log_metrics.iter().map(|i| i.contract.to_checksum_hex()).collect::<Vec<_>>()),
-      Series::new("tx_hash", log_metrics.iter().map(|i| i.tx_hash.clone()).collect::<Vec<_>>()),
-      Series::new("action", log_metrics.iter().map(|i| format!("{:?}", i.action)).collect::<Vec<_>>()),
-      Series::new("sender", log_metrics.iter().map(|i| i.sender.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
-      Series::new("to", log_metrics.iter().map(|i| i.to.map(|i| i.to_checksum_hex())).collect::<Vec<_>>()),
-      Series::new("tick_lower", log_metrics.iter().map(|i| i.tick_lower).collect::<Vec<_>>()),
-      Series::new("tick_upper", log_metrics.iter().map(|i| i.tick_upper).collect::<Vec<_>>()),
-      Series::new("value", log_metrics.iter().map(|i| i.value.map(|x| x as f64)).collect::<Vec<_>>()),
-      Series::new("amount0", log_metrics.iter().map(|i| i.amount0.map(|x| x as f64)).collect::<Vec<_>>()),
-      Series::new("amount1", log_metrics.iter().map(|i| i.amount1.map(|x| x as f64)).collect::<Vec<_>>()),
-      Series::new("fee0", log_metrics.iter().map(|i| i.fee0.map(|x| x as f64)).collect::<Vec<_>>()),
-      Series::new("fee1", log_metrics.iter().map(|i| i.fee1.map(|x| x as f64)).collect::<Vec<_>>()),
-      Series::new("price", log_metrics.iter().map(|i| i.price).collect::<Vec<_>>()),
-    ])?;
+    let df = df!{
+      "height" => log_metrics.iter().map(|i| i.height).collect::<Vec<_>>(),
+      "block_index" => log_metrics.iter().map(|i| i.block_index).collect::<Vec<_>>(),
+      "contract" => log_metrics.iter().map(|i| i.contract.to_checksum_hex()).collect::<Vec<_>>(),
+      "tx_hash" => log_metrics.iter().map(|i| i.tx_hash.clone()).collect::<Vec<_>>(),
+      "action" => log_metrics.iter().map(|i| format!("{:?}", i.action)).collect::<Vec<_>>(),
+      "sender" => log_metrics.iter().map(|i| i.sender.map(|i| i.to_checksum_hex())).collect::<Vec<_>>(),
+      "to" => log_metrics.iter().map(|i| i.to.map(|i| i.to_checksum_hex())).collect::<Vec<_>>(),
+      "tick_lower" => log_metrics.iter().map(|i| i.tick_lower).collect::<Vec<_>>(),
+      "tick_upper" => log_metrics.iter().map(|i| i.tick_upper).collect::<Vec<_>>(),
+      "value" => log_metrics.iter().map(|i| i.value.map(|x| x as f64)).collect::<Vec<_>>(),
+      "amount0" => log_metrics.iter().map(|i| i.amount0.map(|x| x as f64)).collect::<Vec<_>>(),
+      "amount1" => log_metrics.iter().map(|i| i.amount1.map(|x| x as f64)).collect::<Vec<_>>(),
+      "fee0" => log_metrics.iter().map(|i| i.fee0.map(|x| x as f64)).collect::<Vec<_>>(),
+      "fee1" => log_metrics.iter().map(|i| i.fee1.map(|x| x as f64)).collect::<Vec<_>>(),
+      "price" => log_metrics.iter().map(|i| i.price).collect::<Vec<_>>(),
+    }?;
     Ok(df)
   }
 }
